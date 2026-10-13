@@ -68,6 +68,12 @@ public class EclipseActivity extends SDLActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
+        // SDLActivity returns early (without creating its layout) when a native library failed to
+        // load. Do not crash on top of that; SDL shows its own error message.
+        if (mLayout == null) {
+            return;
+        }
+
         // Make SDL's surface translucent and put it above the video surface.
         if (mSurface != null) {
             mSurface.getHolder().setFormat(PixelFormat.TRANSLUCENT);

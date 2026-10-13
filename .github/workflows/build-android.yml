@@ -37,7 +37,7 @@ jobs:
           echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/26.3.11579264" >> "$GITHUB_ENV"
 
       - name: Install build tools
-        run: sudo apt-get update && sudo apt-get install -y ninja-build pkg-config cmake
+        run: sudo apt-get update && sudo apt-get install -y ninja-build pkg-config cmake patchelf
 
       - name: Build native libraries
         shell: bash

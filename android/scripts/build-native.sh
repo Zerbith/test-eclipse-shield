@@ -223,13 +223,23 @@ collect_libs() {
     # Ship every library libmain.so links against that we built ourselves (e.g. libmicrodns.so).
     local readelf="${ANDROID_NDK_HOME}/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-readelf"
     local need found
+    RENAMED=()
     for need in $("${readelf}" -d "${main}" | sed -n 's/.*(NEEDED).*\[\(.*\)\]/\1/p'); do
         echo "   libmain.so needs ${need}"
         case "${need}" in
             libc.so|libm.so|libdl.so|liblog.so|libandroid.so|libz.so|libSDL2.so|libhidapi.so|libGLESv1_CM.so|libGLESv2.so|libEGL.so|libOpenSLES.so|libmediandk.so) continue ;;
         esac
         found="$(find "${WORK}/b-eclipse" "${DEPS}" -name "${need}" | head -n1)"
-        if [[ -n "${found}" ]]; then cp "${found}" "${OUT}/${need}"; else echo "WARNING: ${need} not found" >&2; fi
+        if [[ -z "${found}" ]]; then echo "WARNING: ${need} not found" >&2; continue; fi
+        if [[ "${need}" == lib* ]]; then
+            cp "${found}" "${OUT}/${need}"
+        else
+            # Android only extracts lib*.so from an APK, so give the library a lib prefix and
+            # patch every reference to it.
+            cp "${found}" "${OUT}/lib${need}"
+            patchelf --set-soname "lib${need}" "${OUT}/lib${need}"
+            RENAMED+=("${need}")
+        fi
     done
     cp "${sdl}" "${OUT}/libSDL2.so"
     cp "${mod}" "${OUT}/libss4s-mediacodec.so"
@@ -245,6 +255,16 @@ collect_libs() {
     else
         echo "WARNING: ss4s-sdl.so (audio) was not built; the stream will be silent" >&2
     fi
+    # Point everything that referenced a renamed library at its new lib-prefixed name.
+    local f r
+    for r in "${RENAMED[@]}"; do
+        for f in "${OUT}"/*.so; do
+            if "${readelf}" -d "${f}" | grep -q "\[${r}\]"; then
+                echo "   patching ${f##*/}: ${r} -> lib${r}"
+                patchelf --replace-needed "${r}" "lib${r}" "${f}"
+            fi
+        done
+    done
     ls -l "${OUT}"
 }
 
