@@ -3616,6 +3616,16 @@ int vdec_delegate_setup(int videoFormat, int width, int height, int redrawRate, 
          * COOP_DECODE_BUDGET_MBPS). */
         fflush(diag_log);
     }
+#ifdef __ANDROID__
+    /* The co-op composite is tiled HEVC, which the Shield's hardware decoder (OMX.Nvidia.h265)
+     * does not decode correctly. The MediaCodec module reads this and picks Google's software
+     * decoder instead. Cleared for ordinary streams, which the hardware decoder handles fine. */
+    if (app_launch_coop_requested()) {
+        setenv("ECLIPSE_SOFTWARE_HEVC", "1", 1);
+    } else {
+        unsetenv("ECLIPSE_SOFTWARE_HEVC");
+    }
+#endif
     vendor_diag_hang_arm("SS4S_PlayerVideoOpen");
     SS4S_VideoOpenResult open_result = coop_solo ? SS4S_VIDEO_OPEN_OK
                                                  : SS4S_PlayerVideoOpen(player, &info);

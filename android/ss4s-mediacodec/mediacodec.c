@@ -20,6 +20,7 @@
 #include <media/NdkMediaFormat.h>
 #include <pthread.h>
 #include <stdarg.h>
+#include <sys/system_properties.h>
 #include <stdatomic.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -176,7 +177,30 @@ static SS4S_VideoOpenResult Open(const SS4S_VideoInfo *info, const SS4S_VideoExt
         free(inst);
         return SS4S_VIDEO_OPEN_ERROR;
     }
-    inst->codec = AMediaCodec_createDecoderByType(mime);
+    /* WHICH DECODER. Co-op streams carry HEVC tiles (see coop_slice_to_tile). NVIDIA's hardware
+     * decoder garbles or skips them, Google's software decoder (libhevc) handles them. The session
+     * asks for the software decoder through ECLIPSE_SOFTWARE_HEVC; for experiments the system
+     * property debug.eclipse.decoder (adb shell setprop debug.eclipse.decoder <name>) names any
+     * decoder, and "default" forces the normal choice. */
+    inst->codec = NULL;
+    {
+        char forced[PROP_VALUE_MAX] = {0};
+        __system_property_get("debug.eclipse.decoder", forced);
+        const char *want = NULL;
+        if (forced[0] != '\0' && strcmp(forced, "default") != 0) {
+            want = forced;
+        } else if (forced[0] == '\0' && info->codec == SS4S_VIDEO_H265 && getenv("ECLIPSE_SOFTWARE_HEVC") != NULL) {
+            want = "c2.android.hevc.decoder";
+        }
+        if (want != NULL) {
+            inst->codec = AMediaCodec_createCodecByName(want);
+            Log(inst->codec != NULL ? SS4S_LogLevelInfo : SS4S_LogLevelWarn, "Decoder %s: %s", want,
+                inst->codec != NULL ? "created" : "not available, using the default");
+        }
+    }
+    if (inst->codec == NULL) {
+        inst->codec = AMediaCodec_createDecoderByType(mime);
+    }
     if (inst->codec == NULL) {
         Log(SS4S_LogLevelError, "No decoder for %s", mime);
         ANativeWindow_release(inst->window);
@@ -222,7 +246,16 @@ static SS4S_VideoOpenResult Open(const SS4S_VideoInfo *info, const SS4S_VideoExt
         goto fail;
     }
     inst->outputThreadStarted = true;
-    Log(SS4S_LogLevelInfo, "Opened %s %dx%d", SS4S_VideoCodecName(info->codec), info->width, info->height);
+    {
+        char *name = NULL;
+        if (AMediaCodec_getName(inst->codec, &name) == AMEDIA_OK && name != NULL) {
+            Log(SS4S_LogLevelInfo, "Opened %s %dx%d with decoder %s", SS4S_VideoCodecName(info->codec), info->width,
+                info->height, name);
+            AMediaCodec_releaseName(inst->codec, name);
+        } else {
+            Log(SS4S_LogLevelInfo, "Opened %s %dx%d", SS4S_VideoCodecName(info->codec), info->width, info->height);
+        }
+    }
     *instance = inst;
     return SS4S_VIDEO_OPEN_OK;
 
@@ -251,6 +284,38 @@ static bool AppendFrame(SS4S_VideoInstance *inst, const unsigned char *data, siz
     return true;
 }
 
+/* First few access units: one line per NAL unit with its type, size and leading bytes. Enough to
+ * read the stream's structure (parameter sets, slices, tiles) from a log. */
+static void DumpNals(uint64_t number, const unsigned char *data, size_t size) {
+    size_t i = 0;
+    while (i + 3 < size) {
+        if (!(data[i] == 0 && data[i + 1] == 0 && data[i + 2] == 1)) {
+            i++;
+            continue;
+        }
+        size_t start = i + 3;
+        size_t end = start;
+        while (end + 2 < size && !(data[end] == 0 && data[end + 1] == 0 && (data[end + 2] == 1 || data[end + 2] == 0))) {
+            end++;
+        }
+        if (end + 2 >= size) {
+            end = size;
+        }
+        int type = (data[start] >> 1) & 0x3f;
+        size_t show = (type >= 32 && type <= 34) ? 40 : 12;
+        if (show > end - start) {
+            show = end - start;
+        }
+        char hex[96];
+        size_t pos = 0;
+        for (size_t k = 0; k < show && pos + 3 < sizeof(hex); k++) {
+            pos += (size_t) snprintf(hex + pos, sizeof(hex) - pos, "%02x", data[start + k]);
+        }
+        Log(SS4S_LogLevelInfo, "AU%llu nal type=%d len=%zu %s", (unsigned long long) number, type, end - start, hex);
+        i = end;
+    }
+}
+
 static SS4S_VideoFeedResult Feed(SS4S_VideoInstance *inst, const unsigned char *data, size_t size,
                                  SS4S_VideoFeedFlags flags) {
     if (flags & SS4S_VIDEO_FEED_DATA_FRAME_START) {
@@ -269,6 +334,9 @@ static SS4S_VideoFeedResult Feed(SS4S_VideoInstance *inst, const unsigned char *
 
     if (inst->frameSize > inst->largestFrame) {
         inst->largestFrame = inst->frameSize;
+    }
+    if (inst->fed < 3) {
+        DumpNals(inst->fed, inst->frame, inst->frameSize);
     }
     ssize_t index = AMediaCodec_dequeueInputBuffer(inst->codec, FEED_INPUT_TIMEOUT_US);
     if (index < 0) {
