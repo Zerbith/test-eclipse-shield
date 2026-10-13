@@ -16,7 +16,14 @@
 
 static int settings_load(app_settings_t *settings);
 
+#ifdef __ANDROID__
+void android_stdio_to_logcat(void);
+#endif
+
 int main(int argc, char *argv[]) {
+#ifdef __ANDROID__
+    android_stdio_to_logcat();
+#endif
 #ifdef TARGET_WEBOS
     if (getenv("EGL_PLATFORM") == NULL) {
         setenv("EGL_PLATFORM", "wayland", 0);
