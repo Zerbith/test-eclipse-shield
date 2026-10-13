@@ -16,7 +16,9 @@
 #include "uuidstr.h"
 
 #include <errno.h>
+#if defined(__GLIBC__)
 #include <execinfo.h>
+#endif
 #include <limits.h>
 #include <pthread.h>
 #include <stdarg.h>
@@ -102,12 +104,15 @@ static void coop_fatal_signal(int sig) {
     FILE *f = fopen(AURORA_SECONDARY_LOG, "a");
     if (f != NULL) {
         fprintf(f, "!!! secondary FATAL signal=%d (forwarded=%u)\n", sig, coop_fwd);
+#if defined(__GLIBC__)
+        /* bionic (Android) only has backtrace() from API 33, so this is glibc-only. */
         void *frames[24];
         int n = backtrace(frames, 24);
         char **syms = backtrace_symbols(frames, n);
         for (int i = 0; syms != NULL && i < n; ++i) {
             fprintf(f, "    #%d %s\n", i, syms[i]);
         }
+#endif
         fflush(f);
         fclose(f);
     }

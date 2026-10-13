@@ -1,7 +1,9 @@
 #include "app.h"
 
 #include <locale.h>
+#ifndef __ANDROID__
 #include <libintl.h>
+#endif
 #include <stdlib.h>
 
 #include "util/i18n.h"
@@ -32,6 +34,11 @@ void app_open_url(const char *url) {
 }
 
 void app_init_locale() {
+#ifdef __ANDROID__
+    /* No gettext on Android: strings stay in English (see i18n_android.c). */
+    i18n_setlocale("");
+    return;
+#else
     const char *textdomaindir = getenv("TEXTDOMAINDIR");
 #ifdef OS_WINDOWS
     /* A downloaded portable build has no machine-wide gettext prefix. Resolve
@@ -56,6 +63,7 @@ void app_init_locale() {
 #endif
     textdomain("moonlight-tv");
     i18n_setlocale("");
+#endif
 }
 
 app_launch_params_t *app_handle_launch(app_t *app, int argc, char *argv[]) {
