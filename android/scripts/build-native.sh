@@ -128,6 +128,40 @@ Cflags: -I\${includedir}
 EOF
 }
 
+build_uuid_shim() {
+    # Android has no libuuid. Eclipse only needs uuid_generate_random() and uuid_unparse(), so
+    # provide a tiny header-only replacement plus a pkg-config file for pkg_check_modules(uuid).
+    echo "==> installing uuid shim"
+    mkdir -p "${DEPS}/include/uuid" "${DEPS}/lib/pkgconfig"
+    cat > "${DEPS}/include/uuid/uuid.h" <<'EOF'
+#pragma once
+#include <stdio.h>
+#include <stdlib.h>
+
+typedef unsigned char uuid_t[16];
+
+static inline void uuid_generate_random(uuid_t out) {
+    arc4random_buf(out, 16);
+    out[6] = (unsigned char) ((out[6] & 0x0f) | 0x40); /* version 4 */
+    out[8] = (unsigned char) ((out[8] & 0x3f) | 0x80); /* RFC 4122 variant */
+}
+
+static inline void uuid_unparse(const uuid_t in, char *out) {
+    snprintf(out, 37, "%02x%02x%02x%02x-%02x%02x-%02x%02x-%02x%02x-%02x%02x%02x%02x%02x%02x",
+             in[0], in[1], in[2], in[3], in[4], in[5], in[6], in[7],
+             in[8], in[9], in[10], in[11], in[12], in[13], in[14], in[15]);
+}
+EOF
+    cat > "${DEPS}/lib/pkgconfig/uuid.pc" <<EOF
+prefix=${DEPS}
+includedir=\${prefix}/include
+Name: uuid
+Description: Header-only UUID shim for Android
+Version: 2.38
+Cflags: -I\${includedir}
+EOF
+}
+
 # ---------------------------------------------------------------------------------------------
 # Eclipse
 # ---------------------------------------------------------------------------------------------
@@ -206,6 +240,7 @@ build_mbedtls
 build_curl
 build_opus
 build_inih
+build_uuid_shim
 fetch_sdl_java
 prepare_eclipse_sources
 build_eclipse
