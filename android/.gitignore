@@ -1,0 +1,6 @@
+build/
+app/build/
+app/src/main/jniLibs/
+app/src/main/java/org/libsdl/
+.gradle/
+local.properties
