@@ -460,6 +460,10 @@ static void crash_handler(int sig, siginfo_t *si, void *uctx) {
 }
 
 void crash_log_install(void) {
+#ifdef __ANDROID__
+    /* Leave crashes to Android's debuggerd: it prints a full symbolised backtrace to logcat (tag DEBUG). */
+    return;
+#endif
     static int done = 0;
     if (done) {
         return;
