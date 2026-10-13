@@ -9,6 +9,7 @@ on:
       - 'android/**'
       - 'CMakeLists.txt'
       - 'src/**'
+      - 'core/**'
       - '.github/workflows/build-android.yml'
 
 jobs:
