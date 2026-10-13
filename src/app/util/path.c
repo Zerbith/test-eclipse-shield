@@ -61,6 +61,9 @@ static wchar_t *path_utf8_to_wide(const char *value) {
 #endif
 
 char *path_join(const char *parent, const char *basename) {
+    if (parent == NULL) {
+        parent = "";
+    }
     unsigned int parentlen = strlen(parent);
     if (parentlen && parent[parentlen - 1] == PATH_SEPARATOR) {
         parentlen -= 1;
@@ -71,6 +74,9 @@ char *path_join(const char *parent, const char *basename) {
 }
 
 void path_join_to(char *dest, size_t maxlen, const char *parent, const char *basename) {
+    if (parent == NULL) {
+        parent = "";
+    }
     unsigned int parentlen = strlen(parent);
     if (parentlen && parent[parentlen - 1] == PATH_SEPARATOR) {
         parentlen -= 1;

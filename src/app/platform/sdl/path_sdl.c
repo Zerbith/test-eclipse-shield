@@ -1,6 +1,9 @@
 #include "util/path.h"
 
 #include <SDL.h>
+#ifdef __ANDROID__
+#include <SDL_system.h>
+#endif
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -65,6 +68,15 @@ const char *path_multiview_log(void) {
 }
 
 char *path_assets() {
+#ifdef __ANDROID__
+    /* SDL_GetBasePath() has no meaning inside an APK. Optional data files (controller db extras,
+     * CA bundle) are looked up in the app's private storage instead. */
+    const char *internal = SDL_AndroidGetInternalStoragePath();
+    if (internal == NULL) {
+        return path_owned_copy("/data/local/tmp");
+    }
+    return path_owned_copy(internal);
+#else
     char *sdl_path = SDL_GetBasePath();
     if (sdl_path == NULL) {
         return NULL;
@@ -76,6 +88,7 @@ char *path_assets() {
     }
     SDL_free(sdl_path);
     return path;
+#endif
 }
 
 char *path_pref(bool *persistent) {
@@ -175,6 +188,11 @@ static char *path_cache_parent() {
     }
     char *cachedir = path_join(appdir, "cache");
     SDL_free(appdir);
+    path_dir_ensure(cachedir);
+    return cachedir;
+#elif defined(__ANDROID__)
+    const char *internal = SDL_AndroidGetInternalStoragePath();
+    char *cachedir = path_join(internal != NULL ? internal : "/data/local/tmp", "cache");
     path_dir_ensure(cachedir);
     return cachedir;
 #else
