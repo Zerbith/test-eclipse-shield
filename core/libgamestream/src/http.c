@@ -135,6 +135,12 @@ HTTP *http_create(const char *keydir) {
     }
 
     curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 0L);
+#ifdef __ANDROID__
+    /* libcurl 8.9's mbedTLS (2.x) backend only switches to "verify optional" when a TLS version range
+     * is requested explicitly; with the default it keeps mbedTLS' "verify required", so the host's
+     * self-signed certificate is rejected even with VERIFYPEER=0. */
+    curl_easy_setopt(curl, CURLOPT_SSLVERSION, (long) CURL_SSLVERSION_TLSv1_2);
+#endif
     curl_easy_setopt(curl, CURLOPT_SSLENGINE_DEFAULT, 1L);
     curl_easy_setopt(curl, CURLOPT_SSLCERTTYPE, "PEM");
     curl_easy_setopt(curl, CURLOPT_SSLKEYTYPE, "PEM");
