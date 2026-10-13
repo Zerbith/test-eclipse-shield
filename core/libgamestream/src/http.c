@@ -174,7 +174,11 @@ int http_request(HTTP *http, char *url, HTTP_DATA *data) {
     commons_log_debug("GameStream", "Request %p %s", data, url);
 
     int ret = GS_FAILED;
+    char detail[CURL_ERROR_SIZE];
+    detail[0] = '\0';
+    curl_easy_setopt(curl, CURLOPT_ERRORBUFFER, detail);
     CURLcode res = curl_easy_perform(curl);
+    curl_easy_setopt(curl, CURLOPT_ERRORBUFFER, NULL);
 
     if (res == CURLE_HTTP_RETURNED_ERROR) {
         /* CURLINFO_RESPONSE_CODE stores a LONG. An int here is a 4-byte slot for an 8-byte write on
@@ -188,6 +192,9 @@ int http_request(HTTP *http, char *url, HTTP_DATA *data) {
         const char *errmsg = curl_easy_strerror(res);
         ret = gs_set_error(GS_IO_ERROR, "cURL error: %s", errmsg);
         commons_log_debug("GameStream", "Request %p error %d: %s", data, ret, errmsg);
+        if (detail[0] != '\0') {
+            commons_log_debug("GameStream", "Request %p detail: %s", data, detail);
+        }
         goto finish;
     }
     assert (data->memory != NULL);
