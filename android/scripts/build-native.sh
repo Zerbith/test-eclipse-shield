@@ -196,7 +196,8 @@ build_eclipse() {
         -DCMAKE_SHARED_LINKER_FLAGS="-L${DEPS}/lib" \
         -DCMAKE_MODULE_LINKER_FLAGS="-L${DEPS}/lib" \
         -DCMAKE_EXE_LINKER_FLAGS="-L${DEPS}/lib" \
-        -DBUILD_TESTS=OFF -DUSE_WERROR=OFF
+        -DBUILD_TESTS=OFF -DUSE_WERROR=OFF \
+        -DCMAKE_C_FLAGS="-Wno-error=format-security -Wno-format-security"
     cmake --build "${WORK}/b-eclipse" -j"${JOBS}"
 }
 
