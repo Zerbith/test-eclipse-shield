@@ -21,6 +21,25 @@
 
 static char *path_cache_parent();
 
+#ifdef __ANDROID__
+/* The app's private data directory. Normally SDL knows it, but the co-op secondary runs in an
+ * Android service process in which SDL's Java glue is not initialised, so it is set explicitly. */
+static char android_files_dir[512];
+
+void path_android_set_files_dir(const char *dir) {
+    if (dir != NULL) {
+        snprintf(android_files_dir, sizeof(android_files_dir), "%s", dir);
+    }
+}
+
+static const char *android_files(void) {
+    if (android_files_dir[0] != '\0') {
+        return android_files_dir;
+    }
+    return SDL_AndroidGetInternalStoragePath();
+}
+#endif
+
 static char *path_owned_copy(const char *value) {
     if (value == NULL) {
         return NULL;
@@ -71,7 +90,7 @@ char *path_assets() {
 #ifdef __ANDROID__
     /* SDL_GetBasePath() has no meaning inside an APK. Optional data files (controller db extras,
      * CA bundle) are looked up in the app's private storage instead. */
-    const char *internal = SDL_AndroidGetInternalStoragePath();
+    const char *internal = android_files();
     if (internal == NULL) {
         return path_owned_copy("/data/local/tmp");
     }
@@ -92,6 +111,17 @@ char *path_assets() {
 }
 
 char *path_pref(bool *persistent) {
+#ifdef __ANDROID__
+    /* Same directory SDL_GetPrefPath() returns on Android (the internal files dir), but without
+     * needing SDL's Java glue, which the co-op secondary process does not have. */
+    const char *files = android_files();
+    if (files == NULL) {
+        *persistent = false;
+        return NULL;
+    }
+    *persistent = true;
+    return path_owned_copy(files);
+#endif
     char *sdl_path = SDL_GetPrefPath("com.limelight", "moonlight-tv");
     if (sdl_path == NULL) {
         *persistent = false;
@@ -123,7 +153,10 @@ char *path_cache() {
 }
 
 char *path_runtime_cache(void) {
-#if defined(__linux__)
+#if defined(__ANDROID__)
+    /* An app process has no HOME or XDG_CACHE_HOME; the private data directory is the owned place. */
+    return path_cache();
+#elif defined(__linux__)
     const char *xdg = SDL_getenv("XDG_CACHE_HOME");
     const char *home = SDL_getenv("HOME");
     if (xdg != NULL) {
@@ -155,6 +188,15 @@ bool path_self_executable(char *dest, size_t maxlen) {
         return false;
     }
     dest[bytes] = '\0';
+    return true;
+#elif defined(__ANDROID__)
+    /* There is no executable to exec: the co-op secondary is started as an Android service. The
+     * caller only needs a non-empty marker that "this platform can start a secondary". */
+    const char marker[] = "android-coop-service";
+    if (maxlen < sizeof(marker)) {
+        return false;
+    }
+    memcpy(dest, marker, sizeof(marker));
     return true;
 #elif defined(__linux__)
     ssize_t count = readlink("/proc/self/exe", dest, maxlen - 1);
@@ -191,7 +233,7 @@ static char *path_cache_parent() {
     path_dir_ensure(cachedir);
     return cachedir;
 #elif defined(__ANDROID__)
-    const char *internal = SDL_AndroidGetInternalStoragePath();
+    const char *internal = android_files();
     char *cachedir = path_join(internal != NULL ? internal : "/data/local/tmp", "cache");
     path_dir_ensure(cachedir);
     return cachedir;

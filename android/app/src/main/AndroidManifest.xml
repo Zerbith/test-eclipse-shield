@@ -35,5 +35,11 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- Second stream of a co-op session. Its own process, see CoopSecondaryService. -->
+        <service
+            android:name=".CoopSecondaryService"
+            android:process=":coop"
+            android:exported="false" />
     </application>
 </manifest>

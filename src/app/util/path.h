@@ -29,6 +29,13 @@ const char *path_diag_log(void);
 const char *path_secondary_log(void);
 const char *path_multiview_log(void);
 
+#ifdef __ANDROID__
+/** Android: the app's private data directory (Context.getFilesDir()). The co-op secondary runs in an
+ * Android service whose process has no SDL Java glue, so SDL's own path functions are unavailable
+ * there; the directory is handed over explicitly. In the main process the call is optional. */
+void path_android_set_files_dir(const char *dir);
+#endif
+
 /**
  * Absolute path of the currently running executable.
  *

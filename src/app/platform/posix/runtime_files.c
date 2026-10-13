@@ -17,6 +17,12 @@ static pthread_once_t runtime_once = PTHREAD_ONCE_INIT;
 static int runtime_fd = -1;
 static int runtime_error = EACCES;
 static _Thread_local bool runtime_initializing;
+#ifdef __ANDROID__
+/* Absolute path of the runtime directory. Android sockets use it directly instead of the
+ * /proc/self/fd alias: the alias depends on proc access rules that vary between releases, and
+ * the app's own files directory is a short, plain path. */
+static char runtime_dir_path[256];
+#endif
 
 static bool private_directory(int fd, bool strict) {
     struct stat st;
@@ -43,6 +49,9 @@ static void runtime_init(void) {
         free(cache);
         return;
     }
+#ifdef __ANDROID__
+    snprintf(runtime_dir_path, sizeof(runtime_dir_path), "%s/runtime", cache);
+#endif
     parent = open(cache, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
     free(cache);
     if (parent < 0) { runtime_error = errno; return; }
@@ -165,8 +174,13 @@ int eclipse_runtime_socket_path(const char *path, char *out, size_t size) {
     const char *name;
     int mapped = runtime_name(path, &name);
     if (mapped < 0) return -1;
+#ifdef __ANDROID__
+    int written = mapped ? snprintf(out, size, "%s/%s", runtime_dir_path, name)
+                         : snprintf(out, size, "%s", path);
+#else
     int written = mapped ? snprintf(out, size, "/proc/self/fd/%d/%s", runtime_fd, name)
                          : snprintf(out, size, "%s", path);
+#endif
     if (written < 0 || (size_t) written >= size) { errno = ENAMETOOLONG; return -1; }
     return 0;
 }

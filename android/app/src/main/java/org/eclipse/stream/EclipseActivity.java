@@ -1,5 +1,7 @@
 package org.eclipse.stream;
 
+import android.content.Context;
+import android.content.Intent;
 import android.graphics.PixelFormat;
 import android.net.wifi.WifiManager;
 import android.os.Bundle;
@@ -48,6 +50,30 @@ public class EclipseActivity extends SDLActivity {
                 }
             }
             return videoSurface;
+        }
+    }
+
+    /** Called from native code (JNI): starts the co-op secondary stream in its own process. */
+    public static void startCoopSecondary(String socket, String hostUuid, int appId, int width,
+                                          int height) {
+        Context context = SDLActivity.getContext();
+        if (context == null) {
+            return;
+        }
+        Intent intent = new Intent(context, CoopSecondaryService.class);
+        intent.putExtra("socket", socket);
+        intent.putExtra("host", hostUuid);
+        intent.putExtra("appId", appId);
+        intent.putExtra("width", width);
+        intent.putExtra("height", height);
+        context.startService(intent);
+    }
+
+    /** Called from native code (JNI): stops the co-op secondary stream. */
+    public static void stopCoopSecondary() {
+        Context context = SDLActivity.getContext();
+        if (context != null) {
+            context.stopService(new Intent(context, CoopSecondaryService.class));
         }
     }
 

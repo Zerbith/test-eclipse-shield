@@ -615,6 +615,46 @@ bool app_decoder_or_embedded_present(app_t *app) {
 }
 #endif
 
+#ifdef __ANDROID__
+static void audio_probe_silence(void *userdata, Uint8 *stream, int len) {
+    (void) userdata;
+    SDL_memset(stream, 0, (size_t) len);
+}
+
+/* SDL's audio module cannot say how many channels the device takes, and a maximum of 0 limits the
+ * settings to stereo. Ask the device by opening it: 7.1, then 5.1. Android mixes down by itself when
+ * the connected sink has fewer speakers, so "opens with N channels" is the right question. */
+static void android_probe_audio_channels(SS4S_AudioCapabilities *cap) {
+    if (cap->maxChannels >= 2) {
+        return;
+    }
+    unsigned best = 2;
+    static const int candidates[] = {8, 6};
+    for (size_t i = 0; i < sizeof(candidates) / sizeof(candidates[0]); i++) {
+        SDL_AudioSpec want, have;
+        SDL_zero(want);
+        SDL_zero(have);
+        want.freq = 48000;
+        want.format = AUDIO_S16LSB;
+        want.channels = (Uint8) candidates[i];
+        want.samples = 480;
+        want.callback = audio_probe_silence;
+        SDL_AudioDeviceID dev = SDL_OpenAudioDevice(NULL, 0, &want, &have, 0);
+        if (dev == 0) {
+            commons_log_info("APP", "Audio probe: %d channels not accepted (%s)", candidates[i], SDL_GetError());
+            continue;
+        }
+        SDL_CloseAudioDevice(dev);
+        if (have.channels == candidates[i]) {
+            best = (unsigned) candidates[i];
+            break;
+        }
+    }
+    commons_log_info("APP", "Audio probe: up to %u channels", best);
+    cap->maxChannels = best;
+}
+#endif
+
 static void libs_init(app_t *app, int argc, char *argv[]) {
     SS4S_SetLoggingFunction(commons_ss4s_logf);
     int ss4s_error;
@@ -642,14 +682,27 @@ static void libs_init(app_t *app, int argc, char *argv[]) {
     }
 #endif
 
+    const char *ss4s_audio_driver = SS4S_ModuleInfoGetId(app->ss4s.selection.audio_module);
+#ifdef __ANDROID__
+    /* The co-op secondary plays nothing, and SDL's audio init needs Java glue that its service
+     * process does not have. SS4S accepts a missing audio driver. */
+    if (coop_secondary_mode() != NULL) {
+        ss4s_audio_driver = NULL;
+    }
+#endif
     SS4S_Config ss4s_config = {
-            .audioDriver = SS4S_ModuleInfoGetId(app->ss4s.selection.audio_module),
+            .audioDriver = ss4s_audio_driver,
             .videoDriver = SS4S_ModuleInfoGetId(app->ss4s.selection.video_module),
             .audioDevice = app_configuration->audio_device,
     };
     SS4S_Init(argc, argv, &ss4s_config);
 
     SS4S_GetAudioCapabilitiesByCodecs(&app->ss4s.audio_cap, SS4S_AUDIO_PCM_S16LE | SS4S_AUDIO_OPUS);
+#ifdef __ANDROID__
+    if (coop_secondary_mode() == NULL) {
+        android_probe_audio_channels(&app->ss4s.audio_cap);
+    }
+#endif
     SS4S_GetVideoCapabilities(&app->ss4s.video_cap);
 
 

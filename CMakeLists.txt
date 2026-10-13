@@ -546,7 +546,7 @@ endif ()
 
 # Preserve the diagnostic harness's explicit global paths. Ordinary POSIX releases
 # translate only the app's legacy temporary names into its owned cache namespace.
-if ((TARGET_WEBOS OR OS_LINUX) AND NOT AURORA_VENDOR_DIAG AND
+if ((TARGET_WEBOS OR OS_LINUX OR OS_ANDROID) AND NOT AURORA_VENDOR_DIAG AND
         NOT WEBOS_APPINFO_ID MATCHES "\\.beta$")
     target_sources(moonlight-lib PRIVATE src/app/platform/posix/runtime_files.c)
     target_compile_definitions(moonlight-lib PUBLIC ECLIPSE_POSIX_RUNTIME=1)

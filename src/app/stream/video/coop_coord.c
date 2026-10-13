@@ -25,6 +25,9 @@
 #include <signal.h>
 #include <sys/time.h>
 #endif
+#ifdef __ANDROID__
+#include "platform/common/android_coop.h"
+#endif
 
 #define COOP_AU_CAP (12u * 1024u * 1024u)  /* a 4K HDR IDR at 85Mbps exceeds 4MB */
 
@@ -404,6 +407,12 @@ static bool coord_executable_path(const char *link, char path[PATH_MAX]) {
  * A secondary belonging to a live primary or another install is not ours to kill.
  * Whether old orphans caused the September 8 launch failure remains unproven. */
 int coop_coord_reap_orphan_secondaries(const char *socket_path) {
+#ifdef __ANDROID__
+    /* The secondary is an Android service in its own process; stopService() ends that process and
+     * a crashed primary takes the app's processes down with it. Nothing to sweep. */
+    (void) socket_path;
+    return 0;
+#endif
     char self_exe[PATH_MAX];
     if (!coord_executable_path("/proc/self/exe", self_exe)) { return 0; }
     DIR *proc = opendir("/proc");
@@ -699,6 +708,24 @@ int coop_coord_spawn_secondary_for(const char *exe_path, const char *socket_path
 }
 
 int coop_coord_spawn_secondary(const char *exe_path, const char *socket_path) {
+#ifdef __ANDROID__
+    /* No fork+exec on Android: the client is a shared library in the app process. Start the
+     * secondary as a service with its own process. The launch parameters were put in the
+     * environment by coop_coord_spawn_secondary_for(); they travel as intent extras instead,
+     * because the service process does not inherit this one's environment. */
+    (void) exe_path;
+    const char *a_host = getenv("COOP_HOST_UUID");
+    const char *a_app = getenv("COOP_APP_ID");
+    const char *a_w = getenv("COOP_STREAM_WIDTH");
+    const char *a_h = getenv("COOP_STREAM_HEIGHT");
+    const int android_pid = eclipse_android_coop_start(
+            socket_path, a_host, a_app != NULL ? atoi(a_app) : 0,
+            a_w != NULL ? atoi(a_w) : 0, a_h != NULL ? atoi(a_h) : 0);
+    if (android_pid > 0) {
+        coord_child = android_pid;
+    }
+    return android_pid;
+#endif
 #ifdef __linux__
     const pid_t parent_pid = getpid();
 #endif
@@ -750,6 +777,16 @@ int coop_coord_spawn_secondary(const char *exe_path, const char *socket_path) {
 
 /* Poll for the child for up to timeout_ms. True if it was reaped. */
 static bool coord_wait_child(unsigned timeout_ms) {
+#ifdef __ANDROID__
+    /* Not our child (it lives in a service process), so waitpid() cannot see it. */
+    for (unsigned waited = 0; waited < timeout_ms; waited += 10) {
+        if (!eclipse_android_coop_alive((int) coord_child)) {
+            return true;
+        }
+        usleep(10000);
+    }
+    return false;
+#endif
     for (unsigned waited = 0; waited < timeout_ms; waited += 10) {
         int status = 0;
         pid_t r = waitpid(coord_child, &status, WNOHANG);
@@ -780,6 +817,14 @@ void coop_coord_reap_secondary(void) {
         coord_child = -1;
         return;
     }
+#ifdef __ANDROID__
+    /* Ask Android to stop the service; its onDestroy ends the process. */
+    eclipse_android_coop_stop();
+    if (coord_wait_child(2000)) {
+        coord_child = -1;
+        return;
+    }
+#endif
     kill(coord_child, SIGTERM);
     if (coord_wait_child(2000)) {
         coord_child = -1;
@@ -808,6 +853,16 @@ bool coop_coord_child_exited(uint32_t *status_out) {
     if (coord_child <= 0) {
         return false;
     }
+#ifdef __ANDROID__
+    if (eclipse_android_coop_alive((int) coord_child)) {
+        return false;              /* still running */
+    }
+    coord_child = -1;
+    if (status_out != NULL) {
+        *status_out = 999;         /* no exit status for a process that is not our child */
+    }
+    return true;
+#endif
     int status = 0;
     pid_t r = waitpid(coord_child, &status, WNOHANG);
     if (r != coord_child) {
