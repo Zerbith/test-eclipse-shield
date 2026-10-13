@@ -193,6 +193,9 @@ build_eclipse() {
     echo "==> building Eclipse (libmain.so + decoder module)"
     cmake -S "${ROOT}" -B "${WORK}/b-eclipse" "${COMMON_CMAKE_ARGS[@]}" \
         -DCMAKE_INSTALL_PREFIX="${WORK}/eclipse-install" \
+        -DCMAKE_SHARED_LINKER_FLAGS="-L${DEPS}/lib" \
+        -DCMAKE_MODULE_LINKER_FLAGS="-L${DEPS}/lib" \
+        -DCMAKE_EXE_LINKER_FLAGS="-L${DEPS}/lib" \
         -DBUILD_TESTS=OFF -DUSE_WERROR=OFF
     cmake --build "${WORK}/b-eclipse" -j"${JOBS}"
 }
