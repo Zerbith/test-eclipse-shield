@@ -189,6 +189,28 @@ PY
     fi
 }
 
+patch_ss4s_for_android() {
+    local cm="${ROOT}/third_party/ss4s/modules/list-ini/CMakeLists.txt"
+    local src="${ROOT}/third_party/ss4s/modules/list-ini/modules_ini.c"
+    # Give the index library the usual lib prefix (libss4s_modules.so) so it can be packaged.
+    python3 - "${cm}" "${src}" <<'PY'
+import sys
+cm, src = sys.argv[1], sys.argv[2]
+s = open(cm).read()
+s = s.replace('        PREFIX ""\n', '', 1)
+open(cm, 'w').write(s)
+s = open(src).read()
+old = '    snprintf(iniPath, PATH_MAX, "%.*s/ss4s_modules.ini", (int) (dirnameEnd - info.dli_fname), info.dli_fname);'
+new = ('#ifdef __ANDROID__\n'
+       '    snprintf(iniPath, PATH_MAX, "%.*s/libss4s_modules_ini.so", (int) (dirnameEnd - info.dli_fname), info.dli_fname);\n'
+       '#else\n' + old + '\n#endif')
+if 'libss4s_modules_ini.so' not in s:
+    assert old in s, "ini path line not found"
+    s = s.replace(old, new, 1)
+open(src, 'w').write(s)
+PY
+}
+
 build_eclipse() {
     echo "==> building Eclipse (libmain.so + decoder module)"
     # bionic has pthread built into libc; provide empty stubs so a plain -lpthread / -lrt still links.
@@ -223,7 +245,6 @@ collect_libs() {
     # Ship every library libmain.so links against that we built ourselves (e.g. libmicrodns.so).
     local readelf="${ANDROID_NDK_HOME}/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-readelf"
     local need found
-    RENAMED=()
     for need in $("${readelf}" -d "${main}" | sed -n 's/.*(NEEDED).*\[\(.*\)\]/\1/p'); do
         echo "   libmain.so needs ${need}"
         case "${need}" in
@@ -231,15 +252,7 @@ collect_libs() {
         esac
         found="$(find "${WORK}/b-eclipse" "${DEPS}" -name "${need}" | head -n1)"
         if [[ -z "${found}" ]]; then echo "WARNING: ${need} not found" >&2; continue; fi
-        if [[ "${need}" == lib* ]]; then
-            cp "${found}" "${OUT}/${need}"
-        else
-            # Android only extracts lib*.so from an APK, so give the library a lib prefix and
-            # patch every reference to it.
-            cp "${found}" "${OUT}/lib${need}"
-            patchelf --set-soname "lib${need}" "${OUT}/lib${need}"
-            RENAMED+=("${need}")
-        fi
+        cp "${found}" "${OUT}/${need}"
     done
     cp "${sdl}" "${OUT}/libSDL2.so"
     cp "${mod}" "${OUT}/libss4s-mediacodec.so"
@@ -255,16 +268,13 @@ collect_libs() {
     else
         echo "WARNING: ss4s-sdl.so (audio) was not built; the stream will be silent" >&2
     fi
-    # Point everything that referenced a renamed library at its new lib-prefixed name.
-    local f r
-    for r in "${RENAMED[@]}"; do
-        for f in "${OUT}"/*.so; do
-            if "${readelf}" -d "${f}" | grep -q "\[${r}\]"; then
-                echo "   patching ${f##*/}: ${r} -> lib${r}"
-                patchelf --replace-needed "${r}" "lib${r}" "${f}"
-            fi
-        done
-    done
+    # ss4s reads its module index (ss4s_modules.ini) from next to libss4s_modules.so. APKs only
+    # carry lib*.so files, so it ships under that name and the loader is patched to look for it.
+    local ini
+    ini="$(find "${WORK}/b-eclipse" -name 'ss4s_modules.ini' | head -n1)"
+    [[ -n "${ini}" ]] || { echo "ss4s_modules.ini was not generated" >&2; exit 1; }
+    cp "${ini}" "${OUT}/libss4s_modules_ini.so"
+    echo "-- module index:"; cat "${ini}"
     ls -l "${OUT}"
 }
 
@@ -286,6 +296,7 @@ build_inih
 build_uuid_shim
 fetch_sdl_java
 prepare_eclipse_sources
+patch_ss4s_for_android
 build_eclipse
 collect_libs
 echo "==> native build finished"
