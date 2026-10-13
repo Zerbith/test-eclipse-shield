@@ -177,20 +177,20 @@ static SS4S_VideoOpenResult Open(const SS4S_VideoInfo *info, const SS4S_VideoExt
         free(inst);
         return SS4S_VIDEO_OPEN_ERROR;
     }
-    /* WHICH DECODER. Co-op streams carry HEVC tiles (see coop_slice_to_tile). NVIDIA's hardware
-     * decoder garbles or skips them, Google's software decoder (libhevc) handles them. The session
-     * asks for the software decoder through ECLIPSE_SOFTWARE_HEVC; for experiments the system
-     * property debug.eclipse.decoder (adb shell setprop debug.eclipse.decoder <name>) names any
-     * decoder, and "default" forces the normal choice. */
+    /* WHICH DECODER. Normally the platform's default (the hardware decoder). For experiments the
+     * system property debug.eclipse.decoder picks another one:
+     *   adb shell setprop debug.eclipse.decoder sw        -> Google's software HEVC decoder
+     *   adb shell setprop debug.eclipse.decoder <name>    -> any decoder by its exact name
+     *   adb shell setprop debug.eclipse.decoder default   -> back to the normal choice */
     inst->codec = NULL;
     {
         char forced[PROP_VALUE_MAX] = {0};
         __system_property_get("debug.eclipse.decoder", forced);
         const char *want = NULL;
-        if (forced[0] != '\0' && strcmp(forced, "default") != 0) {
+        if (strcmp(forced, "sw") == 0) {
+            want = info->codec == SS4S_VIDEO_H265 ? "c2.android.hevc.decoder" : "c2.android.avc.decoder";
+        } else if (forced[0] != '\0' && strcmp(forced, "default") != 0) {
             want = forced;
-        } else if (forced[0] == '\0' && info->codec == SS4S_VIDEO_H265 && getenv("ECLIPSE_SOFTWARE_HEVC") != NULL) {
-            want = "c2.android.hevc.decoder";
         }
         if (want != NULL) {
             inst->codec = AMediaCodec_createCodecByName(want);
