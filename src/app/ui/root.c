@@ -549,6 +549,11 @@ SDL_Window *app_ui_create_window(app_ui_t *ui) {
             win_flags |= SDL_WINDOW_MAXIMIZED;
         }
     }
+#ifdef __ANDROID__
+    /* The video plays on a Surface BEHIND the SDL surface (see EclipseActivity.java), so the UI
+     * must render into an EGL surface with an alpha channel and clear to transparent. */
+    SDL_GL_SetAttribute(SDL_GL_ALPHA_SIZE, 8);
+#endif
     SDL_Window *win = SDL_CreateWindow("Eclipse", win_x, win_y, win_width, win_height, win_flags);
     if (win == NULL) {
 #ifdef TARGET_WEBOS

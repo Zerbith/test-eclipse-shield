@@ -120,6 +120,14 @@ elseif (TARGET_STEAMLINK)
     set(CMAKE_INSTALL_PREFIX moonlight-tv)
     set(CMAKE_INSTALL_BINDIR moonlight-tv/bin)
     set(CMAKE_INSTALL_LIBDIR moonlight-tv/lib)
+elseif (CMAKE_SYSTEM_NAME STREQUAL "Android")
+    # Android TV / NVIDIA Shield. Reuses the POSIX + SDL2 platform code; the app is built as
+    # libmain.so and loaded by SDLActivity. See android/README.md.
+    set(OS_LINUX TRUE)
+    set(OS_ANDROID TRUE)
+
+    set(CMAKE_INSTALL_LIBDIR lib)
+    set(CMAKE_INSTALL_BINDIR bin)
 elseif (CMAKE_SYSTEM_NAME STREQUAL "Linux")
     set(OS_LINUX TRUE)
 
@@ -142,6 +150,14 @@ else ()
     set(CMAKE_INSTALL_DATAROOTDIR share)
 endif ()
 
+if (OS_ANDROID)
+    # No gettext (bionic has no libintl), no libCEC, and the Activity is always fullscreen.
+    set(FEATURE_I18N_GETTEXT OFF)
+    set(FEATURE_INPUT_LIBCEC OFF)
+    set(FEATURE_FORCE_FULLSCREEN ON)
+    set(FEATURE_WINDOW_FULLSCREEN_DESKTOP OFF)
+endif ()
+
 set(CMAKE_THREAD_PREFER_PTHREAD TRUE)
 set(THREADS_PREFER_PTHREAD_FLAG TRUE)
 if (CMAKE_CROSSCOMPILING AND NOT DEFINED THREADS_PTHREAD_ARG)
@@ -160,7 +176,9 @@ endif ()
 find_package(PkgConfig REQUIRED)
 
 find_package(EXPAT REQUIRED)
-find_package(Fontconfig REQUIRED)
+if (NOT OS_ANDROID)
+    find_package(Fontconfig REQUIRED)
+endif ()
 find_package(Freetype REQUIRED)
 find_package(CURL REQUIRED)
 
@@ -207,9 +225,10 @@ if (TARGET_WEBOS)
     pkg_check_modules(PBNJSON_C REQUIRED pbnjson_c)
     pkg_check_modules(PMLOG REQUIRED PmLogLib)
     pkg_check_modules(WEBOSI18N REQUIRED webosi18n)
-elseif (OS_WINDOWS)
+elseif (OS_WINDOWS OR OS_ANDROID)
     # The application and both core libraries are one portable executable on
     # Windows. This is also the layout used by upstream's Windows build fix.
+    # Android links them into libmain.so the same way.
     set(BUILD_SHARED_CORE_LIBS OFF)
 else ()
     set(BUILD_SHARED_CORE_LIBS ON)
@@ -236,13 +255,17 @@ endif ()
 option(SS4S_MODULE_BUILD_DUMMY "Enable SS4S dummy module" OFF)
 
 add_subdirectory(third_party/ss4s)
+if (OS_ANDROID)
+    # Hardware decoder for Android; ss4s_add_module() is defined by the line above.
+    add_subdirectory(android/ss4s-mediacodec)
+endif ()
 
 # Desktop packages must contain a decoder that works immediately after download.
 # The optional external `moonlight` wrapper remains available on Linux, but it is
 # a fallback for an explicitly installed companion rather than a hidden runtime
 # prerequisite. Keep this check here, after SS4S has discovered its modules, so
 # Windows and a future Linux package share the same release gate.
-if ((OS_WINDOWS OR (OS_LINUX AND NOT TARGET_WEBOS AND NOT TARGET_STEAMLINK))
+if ((OS_WINDOWS OR (OS_LINUX AND NOT TARGET_WEBOS AND NOT TARGET_STEAMLINK AND NOT OS_ANDROID))
         AND NOT TARGET ss4s-module-ffmpeg)
     message(FATAL_ERROR
             "Desktop builds require the native FFmpeg video module. Install the "
@@ -275,7 +298,13 @@ endif ()
 target_include_directories(lv_gridview SYSTEM PRIVATE ${SDL2_INCLUDE_DIRS})
 target_include_directories(lv_sdl_img SYSTEM PRIVATE ${SDL2_INCLUDE_DIRS} ${SDL2_IMAGE_INCLUDE_DIRS})
 
-add_executable(moonlight src/main.c)
+if (OS_ANDROID)
+    # SDLActivity loads "main" and calls its SDL_main() (src/main.c includes SDL_main.h).
+    add_library(moonlight SHARED src/main.c)
+    set_target_properties(moonlight PROPERTIES OUTPUT_NAME main)
+else ()
+    add_executable(moonlight src/main.c)
+endif ()
 if (OS_WINDOWS)
     # Produce a native GUI application rather than opening a console window next
     # to SDL. The resource also gives Explorer stable product/version metadata,
@@ -348,7 +377,12 @@ target_include_directories(moonlight-lib SYSTEM PUBLIC ${SDL2_INCLUDE_DIRS} ${SD
 target_link_libraries(moonlight-lib PUBLIC
         m ${CMAKE_DL_LIBS} Threads::Threads ${SDL2_LIBRARIES} ${SDL2_IMAGE_LIBRARIES}
         moonlight-common-c gamestream lvgl ${INIH_LIBRARIES} ${CURL_LIBRARIES}
-        Fontconfig::Fontconfig ${FREETYPE_LIBRARIES})
+        ${FREETYPE_LIBRARIES})
+if (NOT OS_ANDROID)
+    target_link_libraries(moonlight-lib PUBLIC Fontconfig::Fontconfig)
+else ()
+    target_link_libraries(moonlight-lib PUBLIC log android)
+endif ()
 
 target_link_libraries(moonlight-lib PUBLIC lv_gridview lv_sdl_img)
 
@@ -612,6 +646,8 @@ if (TARGET_WEBOS)
     include(PackageWebOS)
 elseif (TARGET_STEAMLINK)
     include(PackageSteamLink)
+elseif (OS_ANDROID)
+    # Packaged by android/ (Gradle), not by CPack.
 elseif (OS_LINUX)
     include(PackageDebian)
 elseif (OS_WINDOWS)

@@ -1,3 +1,6 @@
+#ifdef __ANDROID__
+#include <SDL2/SDL_main.h>
+#endif
 #include "app.h"
 #include "app_launch.h"
 #include "util/path.h"
