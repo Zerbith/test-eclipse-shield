@@ -74,16 +74,35 @@ static const char *path_user_file(const char *basename) {
     return file_path != NULL ? file_path : basename;
 }
 
+#ifdef __ANDROID__
+/* There is no file a user can reach on a TV. Point the diagnostic logs at the process's own stderr:
+ * android_log.c forwards it to logcat (tag "Eclipse"), so `adb logcat` shows the co-op traces of
+ * both processes. */
+#define ANDROID_DIAG_STREAM "/proc/self/fd/2"
+#endif
+
 const char *path_diag_log(void) {
+#ifdef __ANDROID__
+    return ANDROID_DIAG_STREAM;
+#else
     return path_user_file("aurora-diag.log");
+#endif
 }
 
 const char *path_secondary_log(void) {
+#ifdef __ANDROID__
+    return ANDROID_DIAG_STREAM;
+#else
     return path_user_file("coop_secondary.log");
+#endif
 }
 
 const char *path_multiview_log(void) {
+#ifdef __ANDROID__
+    return ANDROID_DIAG_STREAM;
+#else
     return path_user_file("coop_multiview.log");
+#endif
 }
 
 char *path_assets() {

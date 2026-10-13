@@ -32,7 +32,8 @@
 
 #define TAG "EclipseMediaCodec"
 
-#define FEED_INPUT_TIMEOUT_US 8000
+/* Co-op feeds a 4K composite; give a busy decoder a little longer before a frame is dropped. */
+#define FEED_INPUT_TIMEOUT_US 20000
 #define OUTPUT_POLL_TIMEOUT_US 10000
 
 static const SS4S_LibraryContext *LibContext = NULL;
@@ -51,6 +52,11 @@ struct SS4S_VideoInstance {
     unsigned char *frame;
     size_t frameSize;
     size_t frameCapacity;
+
+    /* Diagnostics, written by the feed thread only (output counters by the output thread). */
+    uint64_t fed, droppedBusy, droppedOversize, largestFrame;
+    atomic_uint_fast64_t rendered;
+    size_t inputCapacitySeen;
 };
 
 static void Log(SS4S_LogLevel level, const char *fmt, ...) __attribute__((format(printf, 2, 3)));
@@ -127,6 +133,7 @@ static void *OutputThread(void *arg) {
         if (index >= 0) {
             /* render=true shows the frame immediately: lowest latency, no pacing. */
             AMediaCodec_releaseOutputBuffer(inst->codec, (size_t) index, true);
+            atomic_fetch_add(&inst->rendered, 1);
         } else if (index == AMEDIACODEC_INFO_OUTPUT_FORMAT_CHANGED) {
             AMediaFormat *format = AMediaCodec_getOutputFormat(inst->codec);
             if (format != NULL) {
@@ -181,6 +188,15 @@ static SS4S_VideoOpenResult Open(const SS4S_VideoInfo *info, const SS4S_VideoExt
     AMediaFormat_setString(format, AMEDIAFORMAT_KEY_MIME, mime);
     AMediaFormat_setInt32(format, AMEDIAFORMAT_KEY_WIDTH, info->width);
     AMediaFormat_setInt32(format, AMEDIAFORMAT_KEY_HEIGHT, info->height);
+    /* A big IDR (a 4K picture, or the spliced co-op composite) can exceed the decoder's default
+     * input buffer, and a truncated access unit decodes as garbage. Ask for room: one byte per
+     * pixel, between 1 and 8 MB. */
+    {
+        int64_t want = (int64_t) info->width * (int64_t) info->height;
+        if (want < 1024 * 1024) want = 1024 * 1024;
+        if (want > 8 * 1024 * 1024) want = 8 * 1024 * 1024;
+        AMediaFormat_setInt32(format, "max-input-size", (int32_t) want);
+    }
     /* Plain-string keys: the matching constants only exist in newer NDK headers. */
     AMediaFormat_setInt32(format, "low-latency", 1);
     AMediaFormat_setInt32(format, "priority", 0);
@@ -251,15 +267,26 @@ static SS4S_VideoFeedResult Feed(SS4S_VideoInstance *inst, const unsigned char *
         return SS4S_VIDEO_FEED_OK; /* wait for FRAME_END */
     }
 
+    if (inst->frameSize > inst->largestFrame) {
+        inst->largestFrame = inst->frameSize;
+    }
     ssize_t index = AMediaCodec_dequeueInputBuffer(inst->codec, FEED_INPUT_TIMEOUT_US);
     if (index < 0) {
         /* Decoder is behind. Drop this frame and ask the host for a clean picture. */
+        inst->droppedBusy++;
         inst->frameSize = 0;
         return SS4S_VIDEO_FEED_REQUEST_KEYFRAME;
     }
     size_t capacity = 0;
     uint8_t *buffer = AMediaCodec_getInputBuffer(inst->codec, (size_t) index, &capacity);
+    if (capacity > 0) {
+        inst->inputCapacitySeen = capacity;
+    }
     if (buffer == NULL || capacity < inst->frameSize) {
+        if (inst->droppedOversize++ < 5) {
+            Log(SS4S_LogLevelError, "Access unit of %zu bytes does not fit the decoder input buffer (%zu bytes)",
+                inst->frameSize, capacity);
+        }
         AMediaCodec_queueInputBuffer(inst->codec, (size_t) index, 0, 0, (uint64_t) NowUs(), 0);
         inst->frameSize = 0;
         return SS4S_VIDEO_FEED_REQUEST_KEYFRAME;
@@ -268,6 +295,17 @@ static SS4S_VideoFeedResult Feed(SS4S_VideoInstance *inst, const unsigned char *
     media_status_t status = AMediaCodec_queueInputBuffer(inst->codec, (size_t) index, 0, inst->frameSize,
                                                          (uint64_t) NowUs(), 0);
     inst->frameSize = 0;
+    inst->fed++;
+    if (inst->fed % 300 == 0) {
+        Log(SS4S_LogLevelInfo,
+            "stats: fed=%llu rendered=%llu droppedBusy=%llu droppedOversize=%llu largestAU=%llu inputBuf=%zu",
+            (unsigned long long) inst->fed, (unsigned long long) atomic_load(&inst->rendered),
+            (unsigned long long) inst->droppedBusy, (unsigned long long) inst->droppedOversize,
+            (unsigned long long) inst->largestFrame, inst->inputCapacitySeen);
+    }
+    if (status != AMEDIA_OK) {
+        Log(SS4S_LogLevelError, "queueInputBuffer failed: %d", (int) status);
+    }
     return status == AMEDIA_OK ? SS4S_VIDEO_FEED_OK : SS4S_VIDEO_FEED_ERROR;
 }
 
