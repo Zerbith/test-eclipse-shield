@@ -54,6 +54,9 @@ jobs:
           sed -n '/shared objects found/,/was not produced/p' build-native.log | head -45 | cut -c1-300 | while IFS= read -r l; do echo "::warning::${l//%/%25}"; done
           tail -n 3 build-native.log | cut -c1-400 | while IFS= read -r l; do echo "::warning::${l//%/%25}"; done
 
+      - name: Remove third-party Gradle wrapper jars (not used)
+        run: find android/build -name gradle-wrapper.jar -delete
+
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
