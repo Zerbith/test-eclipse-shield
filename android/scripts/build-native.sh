@@ -211,6 +211,8 @@ collect_libs() {
     echo "==> collecting shared libraries into ${OUT}"
     rm -f "${OUT}"/*.so
     local main sdl mod
+    echo "-- shared objects found in the Eclipse build tree:"
+    find "${WORK}/b-eclipse" \( -name '*.so' -o -name 'main*' \) -type f | head -40
     main="$(find "${WORK}/b-eclipse" -name 'libmain.so' | head -n1)"
     sdl="$(find "${DEPS}" -name 'libSDL2.so' | head -n1)"
     mod="$(find "${WORK}/b-eclipse" -name 'ss4s-mediacodec.so' | head -n1)"
