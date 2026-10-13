@@ -62,12 +62,22 @@ static bool http_set_credentials(CURL *curl, const char *keydir) {
     }
     struct curl_blob certificate_blob = {
             .data = certificate_data,
+#ifdef __ANDROID__
+            /* libcurl's mbedTLS backend parses PEM blobs with mbedtls_*_parse(), which needs the
+             * terminating NUL counted in the length (the buffer is NUL-terminated by the reader). */
+            .len = certificate_size + 1,
+#else
             .len = certificate_size,
+#endif
             .flags = CURL_BLOB_COPY,
     };
     struct curl_blob key_blob = {
             .data = key_data,
+#ifdef __ANDROID__
+            .len = key_size + 1,
+#else
             .len = key_size,
+#endif
             .flags = CURL_BLOB_COPY,
     };
     const CURLcode cert_result = curl_easy_setopt(curl, CURLOPT_SSLCERT_BLOB, &certificate_blob);

@@ -273,6 +273,11 @@ collect_libs() {
     local ini
     ini="$(find "${WORK}/b-eclipse" -name 'ss4s_modules.ini' | head -n1)"
     [[ -n "${ini}" ]] || { echo "ss4s_modules.ini was not generated" >&2; exit 1; }
+    # The module list is generated inside the ss4s sub-project, before our own decoder module is
+    # registered, so add it by hand if it is missing. (Fields as in GenerateModulesList.cmake.)
+    if ! grep -q '^\[mediacodec\]' "${ini}"; then
+        printf '\n[mediacodec]\nname = Android MediaCodec\nvideo = true\nweight = 100\n\n' >> "${ini}"
+    fi
     cp "${ini}" "${OUT}/libss4s_modules_ini.so"
     echo "-- module index:"; cat "${ini}"
     ls -l "${OUT}"
