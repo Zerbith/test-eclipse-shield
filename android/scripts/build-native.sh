@@ -37,12 +37,16 @@ COMMON_CMAKE_ARGS=(
     -DCMAKE_POSITION_INDEPENDENT_CODE=ON
 )
 
-fetch() { # name url archive-extension -> extracts to ${SRC}/<name>
+fetch() { # name url -> extracts to ${SRC}/<name>
     local name=$1 url=$2
     if [[ -d "${SRC}/${name}" ]]; then return; fi
     echo "==> fetching ${name}"
+    # Download to a file first: tar cannot auto-detect gzip/xz compression on a pipe.
+    local archive="${WORK}/${name}.archive"
+    curl -fsSL --retry 3 -o "${archive}" "${url}"
     mkdir -p "${SRC}/${name}"
-    curl -fsSL "${url}" | tar -x --strip-components=1 -C "${SRC}/${name}" -f -
+    tar -xf "${archive}" --strip-components=1 -C "${SRC}/${name}"
+    rm -f "${archive}"
 }
 
 cmake_dep() { # name extra-cmake-args...
