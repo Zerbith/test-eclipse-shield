@@ -191,6 +191,12 @@ PY
 
 build_eclipse() {
     echo "==> building Eclipse (libmain.so + decoder module)"
+    # bionic has pthread built into libc; provide empty stubs so a plain -lpthread / -lrt still links.
+    local ar="${ANDROID_NDK_HOME}/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ar"
+    for stub in pthread rt; do
+        rm -f "${DEPS}/lib/lib${stub}.a"
+        "${ar}" rcs "${DEPS}/lib/lib${stub}.a"
+    done
     cmake -S "${ROOT}" -B "${WORK}/b-eclipse" "${COMMON_CMAKE_ARGS[@]}" \
         -DCMAKE_INSTALL_PREFIX="${WORK}/eclipse-install" \
         -DCMAKE_SHARED_LINKER_FLAGS="-L${DEPS}/lib" \
