@@ -539,7 +539,9 @@ else ()
         message(FATAL_ERROR "Unknown build platform")
     endif ()
 
-    set_target_properties(moonlight PROPERTIES OUTPUT_NAME moonlight-tv)
+    if (NOT OS_ANDROID)
+        set_target_properties(moonlight PROPERTIES OUTPUT_NAME moonlight-tv)
+    endif ()
 endif ()
 
 # Preserve the diagnostic harness's explicit global paths. Ordinary POSIX releases

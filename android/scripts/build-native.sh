@@ -220,6 +220,17 @@ collect_libs() {
     [[ -n "${sdl}" ]] || { echo "libSDL2.so was not produced" >&2; exit 1; }
     [[ -n "${mod}" ]] || { echo "ss4s-mediacodec.so was not produced" >&2; exit 1; }
     cp "${main}" "${OUT}/libmain.so"
+    # Ship every library libmain.so links against that we built ourselves (e.g. libmicrodns.so).
+    local readelf="${ANDROID_NDK_HOME}/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-readelf"
+    local need found
+    for need in $("${readelf}" -d "${main}" | sed -n 's/.*(NEEDED).*\[\(.*\)\]/\1/p'); do
+        echo "   libmain.so needs ${need}"
+        case "${need}" in
+            libc.so|libm.so|libdl.so|liblog.so|libandroid.so|libz.so|libSDL2.so|libhidapi.so|libGLESv1_CM.so|libGLESv2.so|libEGL.so|libOpenSLES.so|libmediandk.so) continue ;;
+        esac
+        found="$(find "${WORK}/b-eclipse" "${DEPS}" -name "${need}" | head -n1)"
+        if [[ -n "${found}" ]]; then cp "${found}" "${OUT}/${need}"; else echo "WARNING: ${need} not found" >&2; fi
+    done
     cp "${sdl}" "${OUT}/libSDL2.so"
     cp "${mod}" "${OUT}/libss4s-mediacodec.so"
     # Optional: SDL's separate HID library, if this SDL build produced one.
