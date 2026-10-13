@@ -40,7 +40,17 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y ninja-build pkg-config cmake
 
       - name: Build native libraries
-        run: bash android/scripts/build-native.sh
+        shell: bash
+        run: |
+          set -o pipefail
+          bash android/scripts/build-native.sh 2>&1 | tee build-native.log
+      - name: Report native build errors
+        if: failure()
+        shell: bash
+        run: |
+          # Surface the first errors as annotations so they can be read without downloading logs.
+          grep -nE 'FAILED:|error:|undefined (reference|symbol)|ld.lld|CMake Error' build-native.log | head -25 | cut -c1-600 | while IFS= read -r l; do echo "::error::${l//%/%25}"; done
+          tail -n 15 build-native.log | cut -c1-400 | while IFS= read -r l; do echo "::warning::${l//%/%25}"; done
 
       - uses: gradle/actions/setup-gradle@v4
         with:
