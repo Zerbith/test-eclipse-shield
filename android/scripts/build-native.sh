@@ -53,7 +53,7 @@ cmake_dep() { # name extra-cmake-args...
     local name=$1; shift
     echo "==> building ${name}"
     cmake -S "${SRC}/${name}" -B "${WORK}/b-${name}" "${COMMON_CMAKE_ARGS[@]}" "$@"
-    cmake --build "${WORK}/b-${name}" -j"${JOBS}"
+    cmake --build "${WORK}/b-${name}" -j"${JOBS}" -- -k 0
     cmake --install "${WORK}/b-${name}"
 }
 
@@ -204,7 +204,7 @@ build_eclipse() {
         -DCMAKE_EXE_LINKER_FLAGS="-L${DEPS}/lib" \
         -DBUILD_TESTS=OFF -DUSE_WERROR=OFF \
         -DCMAKE_C_FLAGS="-Wno-error=format-security -Wno-format-security"
-    cmake --build "${WORK}/b-eclipse" -j"${JOBS}"
+    cmake --build "${WORK}/b-eclipse" -j"${JOBS}" -- -k 0
 }
 
 collect_libs() {

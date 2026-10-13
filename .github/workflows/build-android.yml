@@ -50,7 +50,8 @@ jobs:
         run: |
           # Surface the first errors as annotations so they can be read without downloading logs.
           { grep -nE 'FAILED:|error:|undefined reference|undefined symbol|CMake Error' build-native.log || true; } | head -25 | cut -c1-600 | while IFS= read -r l; do echo "::error::${l//%/%25}"; done || true
-          tail -n 25 build-native.log | cut -c1-400 | while IFS= read -r l; do echo "::warning::${l//%/%25}"; done
+          echo "::warning::lines=$(wc -l < build-native.log) $(df -h / | tail -1) $(free -m | sed -n 2p)"; grep -n 'ninja: \|FAILED\|Killed\|signal' build-native.log | tail -8 | cut -c1-300 | while IFS= read -r l; do echo "::error::${l//%/%25}"; done || true
+          tail -n 6 build-native.log | cut -c1-400 | while IFS= read -r l; do echo "::warning::${l//%/%25}"; done
 
       - uses: gradle/actions/setup-gradle@v4
         with:
