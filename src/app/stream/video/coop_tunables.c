@@ -99,14 +99,16 @@ void coop_tunables_arm_mode(int orientation) {
     sentinel_set("/tmp/coop-vmirror", vertical);
     bool tiles = !vertical;
 #ifdef __ANDROID__
-    /* The Shield's hardware decoder does not decode HEVC tiles correctly, so horizontal co-op uses
-     * the older untiled composition (two slices in one picture) unless told otherwise:
-     *   adb shell setprop debug.eclipse.coop_tiles 1     -> tile rows, as on webOS
+    /* Horizontal co-op can fall back to the older untiled composition (two slices in one picture)
+     * for A/B tests against the Shield's hardware decoder:
+     *   adb shell setprop debug.eclipse.coop_tiles 0
      * Vertical co-op is columns of tiles by construction and has no untiled form. */
     if (!vertical) {
         char value[PROP_VALUE_MAX] = {0};
         __system_property_get("debug.eclipse.coop_tiles", value);
-        tiles = value[0] == '1';
+        if (value[0] == '0') {
+            tiles = false;
+        }
     }
 #endif
     sentinel_set("/tmp/coop-hh-tiles", tiles);

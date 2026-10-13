@@ -23,11 +23,13 @@
 #define COOP_COORD_SOCKET "/tmp/aurora-coop.sock"
 #endif
 
-/** The co-op splice rules measured on PC hardware decoders (D3D11VA, NVDEC) during the Windows
+/** (Android: the Shield's decoder is NVIDIA's NVDEC family behind MediaCodec, so it gets the same rules.)
+ *  The co-op splice rules measured on PC hardware decoders (D3D11VA, NVDEC) during the Windows
  *  port. Desktop Linux decodes with the same class of hardware (NVDEC, VA-API) and needs the same
  *  rules: without them NVDEC mis-decoded the peer's tile (2026-09-29). webOS and Steam Link keep
  *  their own -- a keepref swap made the TV bootstrap come up BLACK (parameter register §11). */
-#if defined(_WIN32) || (defined(OS_LINUX) && !defined(TARGET_WEBOS) && !defined(TARGET_STEAMLINK))
+#if defined(_WIN32) || defined(__ANDROID__) || \
+    (defined(OS_LINUX) && !defined(TARGET_WEBOS) && !defined(TARGET_STEAMLINK))
 #define COOP_PC_DECODER 1
 #endif
 
