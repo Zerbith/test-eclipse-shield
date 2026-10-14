@@ -10,6 +10,10 @@
 #include <string.h>
 #include <unistd.h>
 
+#ifdef __ANDROID__
+#include "platform/common/android_coop.h"
+#endif
+
 extern PCONFIGURATION app_configuration;
 extern pcmanager_t *pcmanager;
 
@@ -58,6 +62,16 @@ void coop_session_set(const coop_session_t *session) {
     }
     g_session = *session;
     g_session.valid = true;
+#ifdef __ANDROID__
+    /* Android decodes each pane on its own MediaCodec instance, so nothing is spliced and
+     * the vendor-neutral GPU HEVC encoder (which exists only to make an AMD pane and an
+     * NVIDIA pane splice into one bitstream) is not needed. Asking for it only made the
+     * second host slow or unable to start; both hosts stream their native HEVC instead. */
+    if (eclipse_android_coop_dual_enabled() && g_session.gpu_hevc) {
+        commons_log_info("Coop", "Android dual decoders: native HEVC on both hosts, GPU HEVC encoder not requested");
+        g_session.gpu_hevc = false;
+    }
+#endif
     setenv("COOP_GPU_HEVC", session->gpu_hevc ? "1" : "0", 1);
     /* Publish the orientation the same moment the codec is published, so the secondary --
      * a fresh process that reloads moonlight.ini -- runs the dialog's choice and not the
