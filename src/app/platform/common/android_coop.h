@@ -15,6 +15,14 @@ int eclipse_android_coop_start(const char *socket, const char *host, int app_id,
 /** Ask Android to stop the service (which ends its process). */
 void eclipse_android_coop_stop(void);
 
+/** Co-op with one hardware decoder (and one Surface) per host instead of one composite picture.
+ *  Enabled unless the system property debug.eclipse.coop_dual is "0". */
+bool eclipse_android_coop_dual_enabled(void);
+
+/** Place the video Surfaces: 0 = one full-screen Surface, 1 = top/bottom halves (horizontal
+ *  co-op), 2 = left/right halves (vertical co-op). */
+void eclipse_android_set_video_layout(int mode);
+
 /** The secondary writes its process id to a file; 0 when there is none. */
 int eclipse_android_coop_pid(void);
 

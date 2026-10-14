@@ -39,11 +39,40 @@
 
 static const SS4S_LibraryContext *LibContext = NULL;
 
+/* Co-op opens two decoders at once, one per host, each rendering to its own Surface of the
+ * activity (index 0 and 1). The lowest free index goes to the next Open(). */
+static pthread_mutex_t IndexLock = PTHREAD_MUTEX_INITIALIZER;
+static unsigned UsedIndices = 0;
+
+static int ClaimIndex(void) {
+    int index = -1;
+    pthread_mutex_lock(&IndexLock);
+    for (int i = 0; i < 2; i++) {
+        if (!(UsedIndices & (1u << i))) {
+            UsedIndices |= 1u << i;
+            index = i;
+            break;
+        }
+    }
+    pthread_mutex_unlock(&IndexLock);
+    return index;
+}
+
+static void ReleaseIndex(int index) {
+    if (index < 0) {
+        return;
+    }
+    pthread_mutex_lock(&IndexLock);
+    UsedIndices &= ~(1u << index);
+    pthread_mutex_unlock(&IndexLock);
+}
+
 struct SS4S_PlayerContext {
     int reserved;
 };
 
 struct SS4S_VideoInstance {
+    int index; /* which Surface of the activity this decoder renders to */
     AMediaCodec *codec;
     ANativeWindow *window;
     pthread_t outputThread;
@@ -82,7 +111,7 @@ static int64_t NowUs(void) {
 }
 
 /* Ask the Java activity for the Surface the video should be rendered to. */
-static ANativeWindow *AcquireWindow(void) {
+static ANativeWindow *AcquireWindow(int index) {
     JNIEnv *env = SDL_AndroidGetJNIEnv();
     jobject activity = SDL_AndroidGetActivity();
     if (env == NULL || activity == NULL) {
@@ -91,12 +120,12 @@ static ANativeWindow *AcquireWindow(void) {
     }
     ANativeWindow *window = NULL;
     jclass cls = (*env)->GetObjectClass(env, activity);
-    jmethodID method = (*env)->GetStaticMethodID(env, cls, "getVideoSurface", "()Landroid/view/Surface;");
+    jmethodID method = (*env)->GetStaticMethodID(env, cls, "getVideoSurface", "(I)Landroid/view/Surface;");
     if (method == NULL) {
         (*env)->ExceptionClear(env);
-        Log(SS4S_LogLevelError, "getVideoSurface() not found on the activity class");
+        Log(SS4S_LogLevelError, "getVideoSurface(int) not found on the activity class");
     } else {
-        jobject surface = (*env)->CallStaticObjectMethod(env, cls, method);
+        jobject surface = (*env)->CallStaticObjectMethod(env, cls, method, (jint) index);
         if ((*env)->ExceptionCheck(env)) {
             (*env)->ExceptionClear(env);
             surface = NULL;
@@ -172,8 +201,15 @@ static SS4S_VideoOpenResult Open(const SS4S_VideoInfo *info, const SS4S_VideoExt
     if (inst == NULL) {
         return SS4S_VIDEO_OPEN_ERROR;
     }
-    inst->window = AcquireWindow();
+    inst->index = ClaimIndex();
+    if (inst->index < 0) {
+        Log(SS4S_LogLevelError, "Only two video decoders can be open at once");
+        free(inst);
+        return SS4S_VIDEO_OPEN_ERROR;
+    }
+    inst->window = AcquireWindow(inst->index);
     if (inst->window == NULL) {
+        ReleaseIndex(inst->index);
         free(inst);
         return SS4S_VIDEO_OPEN_ERROR;
     }
@@ -204,6 +240,7 @@ static SS4S_VideoOpenResult Open(const SS4S_VideoInfo *info, const SS4S_VideoExt
     if (inst->codec == NULL) {
         Log(SS4S_LogLevelError, "No decoder for %s", mime);
         ANativeWindow_release(inst->window);
+        ReleaseIndex(inst->index);
         free(inst);
         return SS4S_VIDEO_OPEN_UNSUPPORTED_CODEC;
     }
@@ -249,8 +286,8 @@ static SS4S_VideoOpenResult Open(const SS4S_VideoInfo *info, const SS4S_VideoExt
     {
         char *name = NULL;
         if (AMediaCodec_getName(inst->codec, &name) == AMEDIA_OK && name != NULL) {
-            Log(SS4S_LogLevelInfo, "Opened %s %dx%d with decoder %s", SS4S_VideoCodecName(info->codec), info->width,
-                info->height, name);
+            Log(SS4S_LogLevelInfo, "Opened %s %dx%d with decoder %s (surface %d)", SS4S_VideoCodecName(info->codec),
+                info->width, info->height, name, inst->index);
             AMediaCodec_releaseName(inst->codec, name);
         } else {
             Log(SS4S_LogLevelInfo, "Opened %s %dx%d", SS4S_VideoCodecName(info->codec), info->width, info->height);
@@ -262,6 +299,7 @@ static SS4S_VideoOpenResult Open(const SS4S_VideoInfo *info, const SS4S_VideoExt
 fail:
     AMediaCodec_delete(inst->codec);
     ANativeWindow_release(inst->window);
+    ReleaseIndex(inst->index);
     free(inst);
     return SS4S_VIDEO_OPEN_ERROR;
 }
@@ -286,7 +324,7 @@ static bool AppendFrame(SS4S_VideoInstance *inst, const unsigned char *data, siz
 
 /* First few access units: one line per NAL unit with its type, size and leading bytes. Enough to
  * read the stream's structure (parameter sets, slices, tiles) from a log. */
-static void DumpNals(uint64_t number, const unsigned char *data, size_t size) {
+static void DumpNals(int index, uint64_t number, const unsigned char *data, size_t size) {
     size_t i = 0;
     while (i + 3 < size) {
         if (!(data[i] == 0 && data[i + 1] == 0 && data[i + 2] == 1)) {
@@ -311,7 +349,7 @@ static void DumpNals(uint64_t number, const unsigned char *data, size_t size) {
         for (size_t k = 0; k < show && pos + 3 < sizeof(hex); k++) {
             pos += (size_t) snprintf(hex + pos, sizeof(hex) - pos, "%02x", data[start + k]);
         }
-        Log(SS4S_LogLevelInfo, "AU%llu nal type=%d len=%zu %s", (unsigned long long) number, type, end - start, hex);
+        Log(SS4S_LogLevelInfo, "[%d] AU%llu nal type=%d len=%zu %s", index, (unsigned long long) number, type, end - start, hex);
         i = end;
     }
 }
@@ -336,7 +374,7 @@ static SS4S_VideoFeedResult Feed(SS4S_VideoInstance *inst, const unsigned char *
         inst->largestFrame = inst->frameSize;
     }
     if (inst->fed < 3) {
-        DumpNals(inst->fed, inst->frame, inst->frameSize);
+        DumpNals(inst->index, inst->fed, inst->frame, inst->frameSize);
     }
     ssize_t index = AMediaCodec_dequeueInputBuffer(inst->codec, FEED_INPUT_TIMEOUT_US);
     if (index < 0) {
@@ -366,8 +404,8 @@ static SS4S_VideoFeedResult Feed(SS4S_VideoInstance *inst, const unsigned char *
     inst->fed++;
     if (inst->fed % 300 == 0) {
         Log(SS4S_LogLevelInfo,
-            "stats: fed=%llu rendered=%llu droppedBusy=%llu droppedOversize=%llu largestAU=%llu inputBuf=%zu",
-            (unsigned long long) inst->fed, (unsigned long long) atomic_load(&inst->rendered),
+            "stats[%d]: fed=%llu rendered=%llu droppedBusy=%llu droppedOversize=%llu largestAU=%llu inputBuf=%zu",
+            inst->index, (unsigned long long) inst->fed, (unsigned long long) atomic_load(&inst->rendered),
             (unsigned long long) inst->droppedBusy, (unsigned long long) inst->droppedOversize,
             (unsigned long long) inst->largestFrame, inst->inputCapacitySeen);
     }
@@ -408,6 +446,7 @@ static void Close(SS4S_VideoInstance *inst) {
     AMediaCodec_stop(inst->codec);
     AMediaCodec_delete(inst->codec);
     ANativeWindow_release(inst->window);
+    ReleaseIndex(inst->index);
     free(inst->frame);
     free(inst);
 }

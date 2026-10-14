@@ -1,4 +1,4 @@
-target_sources(moonlight-lib PRIVATE session_video.c coop_tunables.c coop_splice.c coop_poc.c coop_ipc.c coop_secondary.c coop_coord.c coop_conceal.c coop_seq.c coop_session.c coop_stream_mode.c coop_trace.c)
+target_sources(moonlight-lib PRIVATE session_video.c coop_tunables.c coop_splice.c coop_poc.c coop_ipc.c coop_secondary.c coop_coord.c coop_dual_android.c coop_conceal.c coop_seq.c coop_session.c coop_stream_mode.c coop_trace.c)
 
 if (WIN32)
     # coop_coord.c's process handling (the /proc orphan reaper, spawn/reap/status) is

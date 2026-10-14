@@ -44,6 +44,10 @@
 #include "coop_secondary.h"
 #include "coop_session.h"
 #include "util/path.h"
+#ifdef __ANDROID__
+#include "coop_dual_android.h"
+#include "platform/common/android_coop.h"
+#endif
 
 #include <SDL.h>
 #include <assert.h>
@@ -125,7 +129,19 @@ static unsigned coop_live_paired = 0, coop_live_fallback = 0;
  * increments is safe without a lock: a stale read costs one more poll interval. */
 /* Set ONLY where a real peer slice is spliced in -- not where one is concealed. */
 static bool coop_first_real_splice = false;
+#ifdef __ANDROID__
+/* Android co-op runs one hardware decoder per host and splices nothing (coop_dual_android.h). */
+static bool coop_dual = false;
+static unsigned coop_dual_primary_fed = 0;
+bool coop_composite_started(void) {
+    if (coop_dual) {
+        return coop_dual_primary_fed > 0 && coop_dual_peer_started();
+    }
+    return coop_first_real_splice;
+}
+#else
 bool coop_composite_started(void) { return coop_first_real_splice; }
+#endif
 static bool coop_splice_test = false;
 static unsigned char *coop_splice_buf = NULL;
 static unsigned char coop_hh_nonvcl[8192];
@@ -3078,7 +3094,16 @@ int vdec_delegate_setup(int videoFormat, int width, int height, int redrawRate, 
      * plane up at the negotiated height letterboxes the result -- the picture decodes and
      * both panes are present, but the renderer sizes for 1080 and the composite is drawn
      * into a band with black above and below. Tell it the height it will actually get. */
-    if (app_launch_coop_requested() && access("/tmp/coop-live", F_OK) == 0) {
+#ifdef __ANDROID__
+    coop_dual = app_launch_coop_requested() && access("/tmp/coop-live", F_OK) == 0 &&
+                eclipse_android_coop_dual_enabled();
+    coop_dual_primary_fed = 0;
+#endif
+    if (app_launch_coop_requested() && access("/tmp/coop-live", F_OK) == 0
+#ifdef __ANDROID__
+        && !coop_dual   /* one decoder per host: the decoder is set up for ONE host's picture */
+#endif
+        ) {
         /* UNCONDITIONAL, AND NOT KEYED ON THE SLICE COUNT. It was briefly gated on
          * /tmp/coop-slices for a full-height two-slice design where each host encoded the WHOLE
          * composite; that design is abandoned (it puts the primary's taskbar inside the peer's
@@ -3616,6 +3641,12 @@ int vdec_delegate_setup(int videoFormat, int width, int height, int redrawRate, 
          * COOP_DECODE_BUDGET_MBPS). */
         fflush(diag_log);
     }
+#ifdef __ANDROID__
+    if (coop_dual) {
+        /* Two Surfaces side by side (vertical) or stacked (horizontal) BEFORE any decoder opens. */
+        eclipse_android_set_video_layout(access("/tmp/coop-vmirror", F_OK) == 0 ? 2 : 1);
+    }
+#endif
     vendor_diag_hang_arm("SS4S_PlayerVideoOpen");
     SS4S_VideoOpenResult open_result = coop_solo ? SS4S_VIDEO_OPEN_OK
                                                  : SS4S_PlayerVideoOpen(player, &info);
@@ -3644,6 +3675,15 @@ int vdec_delegate_setup(int videoFormat, int width, int height, int redrawRate, 
     if (open_result == SS4S_VIDEO_OPEN_OK) {
         coop_second_decoder_probe(info);   /* no-op unless /tmp/coop-probe exists */
     }
+#ifdef __ANDROID__
+    if (coop_dual && open_result == SS4S_VIDEO_OPEN_OK && !coop_dual_start(&info)) {
+        /* No second decoder means no co-op; a one-host picture in half the screen is no answer. */
+        commons_log_error("CoopDual", "the second hardware decoder could not be opened");
+        SS4S_PlayerVideoClose(player);
+        eclipse_android_set_video_layout(0);
+        open_result = SS4S_VIDEO_OPEN_ERROR;
+    }
+#endif
     switch (open_result) {
         case SS4S_VIDEO_OPEN_OK:
             return 0;
@@ -3657,6 +3697,13 @@ int vdec_delegate_setup(int videoFormat, int width, int height, int redrawRate, 
 void vdec_delegate_cleanup() {
     coop_netcap_teardown();   /* stop the capture thread BEFORE anything it reads goes away */
     coop_pump_stop();
+#ifdef __ANDROID__
+    if (coop_dual) {
+        coop_dual_stop();         /* before the coordinator it drains goes away */
+        eclipse_android_set_video_layout(0);
+        coop_dual = false;
+    }
+#endif
     if (coop_spawned) {
         coop_coord_request_peer_shutdown();
         coop_coord_reap_secondary();   /* never leave a stale child behind */
@@ -3865,6 +3912,49 @@ static void coop_emit_rate(FILE *diag_log) {
         }
     }
 
+#ifdef __ANDROID__
+/* The primary host's picture in the one-decoder-per-host co-op layout: feed it, then answer the
+ * way the ordinary single-host path does. */
+static int coop_dual_primary_submit(PDECODE_UNIT decodeUnit, size_t length, SS4S_VideoFeedFlags flags) {
+    SS4S_VideoFeedResult result = diag_feed(FEED_SITE_ORDINARY, buffer, length, flags);
+    if (result == SS4S_VIDEO_FEED_OK) {
+        if (vdec_stream_info.width == 0 || vdec_stream_info.height == 0) {
+            stream_info_parse_size(decodeUnit, &vdec_stream_info);
+        }
+        vdec_temp_stats.totalSubmitTime += LiGetMillis() - decodeUnit->enqueueTimeMs;
+        vdec_temp_stats.submittedFrames++;
+        diag_feed_ok++;
+        coop_dual_primary_fed++;
+        if (coop_dual_primary_fed == 1 && diag_log) {
+            fprintf(diag_log, "[FIRST] frame=%d size=%d type=%s\n", decodeUnit->frameNumber,
+                    decodeUnit->fullLength, decodeUnit->frameType == FRAME_TYPE_IDR ? "IDR" : "P");
+            fflush(diag_log);
+        }
+        return DR_OK;
+    }
+    if (result == SS4S_VIDEO_FEED_REQUEST_KEYFRAME) {
+        unsigned long now = SDL_GetTicks();
+        if (now - lastIdrRequestMs >= IDR_REQUEST_MIN_INTERVAL_MS) {
+            lastIdrRequestMs = now;
+            diag_idr_sent++;
+            return DR_NEED_IDR;
+        }
+        diag_idr_throttled++;
+        return DR_OK;
+    }
+    if (result == SS4S_VIDEO_FEED_NOT_READY) {
+        return DR_OK;
+    }
+    diag_feed_errors++;
+    if (diag_feed_ok == 0 && SDL_GetTicks() - vdec_setup_ms < VDEC_FEED_GRACE_MS) {
+        return DR_OK;
+    }
+    commons_log_error("Session", "Video feed error %d", result);
+    session_interrupt(session, false, STREAMING_INTERRUPT_DECODER);
+    return DR_OK;
+}
+#endif
+
 int vdec_delegate_submit(PDECODE_UNIT decodeUnit) {
     coop_hh_tiled_ok = false;      /* per picture; only the tiled splice sets it */
     if ((size_t) decodeUnit->fullLength > buffer_size) {
@@ -3970,6 +4060,14 @@ int vdec_delegate_submit(PDECODE_UNIT decodeUnit) {
     if (decodeUnit->frameType == FRAME_TYPE_IDR) {
         flags |= SS4S_VIDEO_FEED_DATA_KEYFRAME;
     }
+#ifdef __ANDROID__
+    if (coop_dual) {
+        /* ONE DECODER PER HOST. This host's picture goes to the first decoder exactly as in an
+         * ordinary single-host stream; the other host's pictures are fed to the second decoder by
+         * their own thread (coop_dual_android.c). No splicing, no rewriting. */
+        return coop_dual_primary_submit(decodeUnit, length, flags);
+    }
+#endif
     /* Gated capture of the exact bitstream the host sends, so it can be analysed
      * with tests/coop/hevc_stitch.py (slices per picture, boundary, parameter
      * sets). This is how we verify Apollo really emits the 2 rectangular slices

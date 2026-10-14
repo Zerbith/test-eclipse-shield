@@ -142,6 +142,11 @@ void diag_logs_start(const char *conf_dir) {
     if (keeping || conf_dir == NULL) {
         return;
     }
+#ifdef __ANDROID__
+    /* stdout/stderr already go to logcat (tag "Eclipse"); redirecting them into a file would take
+     * every line away from `adb logcat`, which is the only place a log can be read on a TV. */
+    return;
+#endif
     char dir[1024];
     diag_logs_dir(conf_dir, dir, sizeof(dir));
     if (path_dir_ensure(dir) != 0) {

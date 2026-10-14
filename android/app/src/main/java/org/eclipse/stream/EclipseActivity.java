@@ -5,9 +5,11 @@ import android.content.Intent;
 import android.graphics.PixelFormat;
 import android.net.wifi.WifiManager;
 import android.os.Bundle;
+import android.util.DisplayMetrics;
 import android.view.Surface;
 import android.view.SurfaceHolder;
 import android.view.SurfaceView;
+import android.view.View;
 import android.view.ViewGroup;
 import android.widget.RelativeLayout;
 
@@ -30,14 +32,28 @@ import java.util.List;
 public class EclipseActivity extends SDLActivity {
     private static final Object LOCK = new Object();
     private static volatile Surface videoSurface;
+    /** The second video surface, used by the two-decoder co-op layout. */
+    private static volatile Surface videoSurface2;
+    private static volatile EclipseActivity instance;
 
     private WifiManager.MulticastLock multicastLock;
+    private SurfaceView video1View;
+    private SurfaceView video2View;
 
     /** Called from native code (JNI) on a non-UI thread. Blocks up to 3 s for the Surface. */
     public static Surface getVideoSurface() {
+        return getVideoSurface(0);
+    }
+
+    /**
+     * Called from native code (JNI) on a non-UI thread. Index 0 is the main video surface, index 1
+     * the second one of the two-decoder co-op layout (see {@link #setCoopLayout(int)}). Blocks up
+     * to 4 s for the Surface to exist.
+     */
+    public static Surface getVideoSurface(int index) {
         synchronized (LOCK) {
-            long deadline = System.currentTimeMillis() + 3000;
-            while (videoSurface == null) {
+            long deadline = System.currentTimeMillis() + 4000;
+            while ((index == 0 ? videoSurface : videoSurface2) == null) {
                 long left = deadline - System.currentTimeMillis();
                 if (left <= 0) {
                     break;
@@ -49,8 +65,60 @@ public class EclipseActivity extends SDLActivity {
                     break;
                 }
             }
-            return videoSurface;
+            return index == 0 ? videoSurface : videoSurface2;
         }
+    }
+
+    /**
+     * Called from native code (JNI): where the video surfaces sit. 0 = one surface filling the
+     * screen (normal streaming); 1 = co-op horizontal, one surface in each half (top, bottom);
+     * 2 = co-op vertical (left, right). Co-op gives every host its own hardware decoder and
+     * surface; nothing is composited into one picture.
+     */
+    public static void setCoopLayout(final int mode) {
+        final EclipseActivity activity = instance;
+        if (activity == null) {
+            return;
+        }
+        activity.runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                activity.applyCoopLayout(mode);
+            }
+        });
+    }
+
+    private void applyCoopLayout(int mode) {
+        if (video1View == null || video2View == null || mLayout == null) {
+            return;
+        }
+        int w = mLayout.getWidth();
+        int h = mLayout.getHeight();
+        if (w <= 0 || h <= 0) {
+            DisplayMetrics metrics = getResources().getDisplayMetrics();
+            w = metrics.widthPixels;
+            h = metrics.heightPixels;
+        }
+        RelativeLayout.LayoutParams first;
+        RelativeLayout.LayoutParams second;
+        if (mode == 1) {
+            first = new RelativeLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, h / 2);
+            first.addRule(RelativeLayout.ALIGN_PARENT_TOP);
+            second = new RelativeLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, h - h / 2);
+            second.addRule(RelativeLayout.ALIGN_PARENT_BOTTOM);
+        } else if (mode == 2) {
+            first = new RelativeLayout.LayoutParams(w / 2, ViewGroup.LayoutParams.MATCH_PARENT);
+            first.addRule(RelativeLayout.ALIGN_PARENT_LEFT);
+            second = new RelativeLayout.LayoutParams(w - w / 2, ViewGroup.LayoutParams.MATCH_PARENT);
+            second.addRule(RelativeLayout.ALIGN_PARENT_RIGHT);
+        } else {
+            first = new RelativeLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT);
+            second = new RelativeLayout.LayoutParams(1, 1);
+        }
+        video1View.setLayoutParams(first);
+        video2View.setLayoutParams(second);
+        video2View.setVisibility(mode == 0 ? View.GONE : View.VISIBLE);
     }
 
     /** Called from native code (JNI): starts the co-op secondary stream in its own process. */
@@ -106,7 +174,10 @@ public class EclipseActivity extends SDLActivity {
             mSurface.setZOrderMediaOverlay(true);
         }
 
+        instance = this;
+
         SurfaceView video = new SurfaceView(this);
+        video1View = video;
         video.getHolder().addCallback(new SurfaceHolder.Callback() {
             @Override
             public void surfaceCreated(SurfaceHolder holder) {
@@ -131,6 +202,32 @@ public class EclipseActivity extends SDLActivity {
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
         mLayout.addView(video, 0, params);
 
+        // The second surface only exists (is visible) while a co-op session runs.
+        SurfaceView video2 = new SurfaceView(this);
+        video2View = video2;
+        video2.setVisibility(View.GONE);
+        video2.getHolder().addCallback(new SurfaceHolder.Callback() {
+            @Override
+            public void surfaceCreated(SurfaceHolder holder) {
+                synchronized (LOCK) {
+                    videoSurface2 = holder.getSurface();
+                    LOCK.notifyAll();
+                }
+            }
+
+            @Override
+            public void surfaceChanged(SurfaceHolder holder, int format, int width, int height) {
+            }
+
+            @Override
+            public void surfaceDestroyed(SurfaceHolder holder) {
+                synchronized (LOCK) {
+                    videoSurface2 = null;
+                }
+            }
+        });
+        mLayout.addView(video2, 1, new RelativeLayout.LayoutParams(1, 1));
+
         // mDNS host discovery is silently dropped by many Wi-Fi drivers without this lock.
         WifiManager wifi = (WifiManager) getApplicationContext().getSystemService(WIFI_SERVICE);
         if (wifi != null) {
@@ -142,6 +239,9 @@ public class EclipseActivity extends SDLActivity {
 
     @Override
     protected void onDestroy() {
+        if (instance == this) {
+            instance = null;
+        }
         if (multicastLock != null && multicastLock.isHeld()) {
             multicastLock.release();
         }

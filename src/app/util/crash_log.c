@@ -543,6 +543,12 @@ static bool watch_prepare(void) {
 
 static void dump_ui_stack(void) {
     static bool maps_done = false;
+#ifdef __ANDROID__
+    /* The UI thread is SDL's main-loop thread and it ends when the activity closes; signalling a
+     * pthread_t that no longer exists makes bionic abort the whole process. */
+    out("(no stack on Android)\n");
+    return;
+#endif
     if (snap_signal == 0) {
         out("(no stack: signal SIGRTMIN+5 is taken by something else in this process)\n");
         return;

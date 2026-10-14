@@ -22,6 +22,7 @@
 #include <SDL_system.h>
 
 #include <errno.h>
+#include <sys/system_properties.h>
 #include <signal.h>
 #include <stdarg.h>
 #include <stdio.h>
@@ -172,6 +173,18 @@ int eclipse_android_coop_start(const char *socket, const char *host, int app_id,
         usleep(50 * 1000);
     }
     return -1;
+}
+
+bool eclipse_android_coop_dual_enabled(void) {
+    /* On by default. `adb shell setprop debug.eclipse.coop_dual 0` falls back to the old
+     * single-decoder composite (kept only for comparison). */
+    char value[PROP_VALUE_MAX] = {0};
+    __system_property_get("debug.eclipse.coop_dual", value);
+    return value[0] != '0';
+}
+
+void eclipse_android_set_video_layout(int mode) {
+    (void) call_activity_static("setCoopLayout", "(I)V", (jint) mode);
 }
 
 void eclipse_android_coop_stop(void) {
