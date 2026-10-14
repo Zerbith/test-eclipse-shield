@@ -245,6 +245,9 @@ bool session_has_input(session_t *session) {
 
 void session_toggle_vmouse(session_t *session) {
     bool value = session->config.vmouse && !session_input_is_vmouse_active(&session->input.vmouse);
+    commons_log_info("Input", "Virtual mouse combo: setting %s, mouse is now %s",
+                     session->config.vmouse ? "ON" : "OFF (Settings > Input > Virtual mouse)",
+                     value ? "ACTIVE" : "off");
     session_input_set_vmouse_active(&session->input.vmouse, value);
 }
 
