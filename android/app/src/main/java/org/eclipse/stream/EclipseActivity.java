@@ -123,7 +123,7 @@ public class EclipseActivity extends SDLActivity {
 
     /** Called from native code (JNI): starts the co-op secondary stream in its own process. */
     public static void startCoopSecondary(String socket, String hostUuid, int appId, int width,
-                                          int height) {
+                                          int height, String environment) {
         Context context = SDLActivity.getContext();
         if (context == null) {
             return;
@@ -134,6 +134,7 @@ public class EclipseActivity extends SDLActivity {
         intent.putExtra("appId", appId);
         intent.putExtra("width", width);
         intent.putExtra("height", height);
+        intent.putExtra("env", environment);
         context.startService(intent);
     }
 

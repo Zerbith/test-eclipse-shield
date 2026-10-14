@@ -45,7 +45,7 @@ static void pid_file_set(const char *files_dir) {
 JNIEXPORT jint JNICALL
 Java_org_eclipse_stream_CoopSecondaryService_nativeRun(JNIEnv *env, jclass cls, jstring jfiles,
                                                        jstring jsocket, jstring jhost, jint app_id,
-                                                       jint width, jint height) {
+                                                       jint width, jint height, jstring jenv) {
     (void) cls;
     const char *files = (*env)->GetStringUTFChars(env, jfiles, NULL);
     const char *socket = (*env)->GetStringUTFChars(env, jsocket, NULL);
@@ -56,7 +56,25 @@ Java_org_eclipse_stream_CoopSecondaryService_nativeRun(JNIEnv *env, jclass cls, 
     path_android_set_files_dir(files);
     pid_file_set(files);
 
-    /* The same launch contract the fork path uses (coop_coord_spawn_secondary_for). */
+    /* On desktop the secondary is a fork() and inherits the primary's environment, which is how the
+     * dialog's choices reach it (encoder, HDR, orientation, host monitor off, ...). A service
+     * process inherits nothing, so the primary sends those variables along: "NAME=value" lines. */
+    if (jenv != NULL) {
+        const char *lines = (*env)->GetStringUTFChars(env, jenv, NULL);
+        if (lines != NULL) {
+            char *copy = strdup(lines);
+            (*env)->ReleaseStringUTFChars(env, jenv, lines);
+            for (char *save = NULL, *line = copy != NULL ? strtok_r(copy, "\n", &save) : NULL; line != NULL;
+                 line = strtok_r(NULL, "\n", &save)) {
+                char *eq = strchr(line, '=');
+                if (eq != NULL && eq != line) {
+                    *eq = '\0';
+                    setenv(line, eq + 1, 1);
+                }
+            }
+            free(copy);
+        }
+    }
     if (host != NULL && host[0] != '\0') {
         setenv("COOP_HOST_UUID", host, 1);
     }
@@ -146,6 +164,30 @@ bool eclipse_android_coop_alive(int pid) {
     return kill((pid_t) pid, 0) == 0 || errno == EPERM;
 }
 
+/* The variables the primary hands to the secondary (what fork() would have inherited). */
+static const char *const handed_over_env[] = {
+        "COOP_GPU_HEVC",   "COOP_STREAM_MODE", "COOP_HDR_ALLOWED", "COOP_ORIENTATION_SEL",
+        "COOP_PIN_WOKEN",  "COOP_PIN_AUTOENTRY", "COOP_LOCAL_AUDIO", "ECLIPSE_HOST_MONITOR_OFF",
+};
+
+static jstring handed_over_environment(JNIEnv *env) {
+    char buf[1024];
+    size_t used = 0;
+    for (size_t i = 0; i < sizeof(handed_over_env) / sizeof(handed_over_env[0]); i++) {
+        const char *value = getenv(handed_over_env[i]);
+        if (value == NULL) {
+            continue;
+        }
+        const int n = snprintf(buf + used, sizeof(buf) - used, "%s=%s\n", handed_over_env[i], value);
+        if (n < 0 || (size_t) n >= sizeof(buf) - used) {
+            break;
+        }
+        used += (size_t) n;
+    }
+    buf[used] = '\0';
+    return (*env)->NewStringUTF(env, buf);
+}
+
 int eclipse_android_coop_start(const char *socket, const char *host, int app_id, int width,
                                int height) {
     pid_file_ensure();
@@ -156,11 +198,13 @@ int eclipse_android_coop_start(const char *socket, const char *host, int app_id,
     }
     jstring jsocket = (*env)->NewStringUTF(env, socket);
     jstring jhost = (*env)->NewStringUTF(env, host != NULL ? host : "");
+    jstring jenv = handed_over_environment(env);
     const bool ok = call_activity_static("startCoopSecondary",
-                                         "(Ljava/lang/String;Ljava/lang/String;III)V",
-                                         jsocket, jhost, (jint) app_id, (jint) width, (jint) height);
+                                         "(Ljava/lang/String;Ljava/lang/String;IIILjava/lang/String;)V",
+                                         jsocket, jhost, (jint) app_id, (jint) width, (jint) height, jenv);
     (*env)->DeleteLocalRef(env, jsocket);
     (*env)->DeleteLocalRef(env, jhost);
+    (*env)->DeleteLocalRef(env, jenv);
     if (!ok) {
         return -1;
     }

@@ -34,7 +34,7 @@ public class CoopSecondaryService extends Service {
     private Thread worker;
 
     private static native int nativeRun(String filesDir, String socketPath, String hostUuid,
-                                        int appId, int width, int height);
+                                        int appId, int width, int height, String environment);
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
@@ -46,12 +46,13 @@ public class CoopSecondaryService extends Service {
         final int appId = intent.getIntExtra("appId", 0);
         final int width = intent.getIntExtra("width", 0);
         final int height = intent.getIntExtra("height", 0);
+        final String environment = intent.getStringExtra("env");
         final String filesDir = getFilesDir().getAbsolutePath();
 
         worker = new Thread(() -> {
             int rc = -1;
             try {
-                rc = nativeRun(filesDir, socket, host, appId, width, height);
+                rc = nativeRun(filesDir, socket, host, appId, width, height, environment);
             } catch (Throwable t) {
                 Log.e(TAG, "co-op secondary failed", t);
             }
