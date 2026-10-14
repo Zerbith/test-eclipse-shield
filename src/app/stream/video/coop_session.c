@@ -72,7 +72,7 @@ void coop_session_set(const coop_session_t *session) {
         g_session.gpu_hevc = false;
     }
 #endif
-    setenv("COOP_GPU_HEVC", session->gpu_hevc ? "1" : "0", 1);
+    setenv("COOP_GPU_HEVC", g_session.gpu_hevc ? "1" : "0", 1);
     /* Publish the orientation the same moment the codec is published, so the secondary --
      * a fresh process that reloads moonlight.ini -- runs the dialog's choice and not the
      * saved one. See coop_orientation_resolved(). */
