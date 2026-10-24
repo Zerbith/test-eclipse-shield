@@ -7,6 +7,7 @@
 
 static atomic_bool g_open;
 static atomic_int g_pad = -1;
+static atomic_int g_last_pad = -1;
 static atomic_int g_selection = RADIAL_NONE;
 
 static lv_obj_t *g_root;
@@ -16,12 +17,14 @@ static bool g_mouse_on;
 
 bool radial_menu_is_open(void) { return atomic_load(&g_open); }
 int radial_menu_owner_pad(void) { return atomic_load(&g_pad); }
+int radial_menu_last_pad(void) { return atomic_load(&g_last_pad); }
 
 void radial_menu_set_open(bool open, int pad) {
     atomic_store(&g_pad, open ? pad : -1);
     if (open) {
+        atomic_store(&g_last_pad, pad);
         atomic_store(&g_selection, RADIAL_NONE);
-    }   /* closing KEEPS the selection: the UI thread reads it to know what was chosen */
+    }   /* closing KEEPS the selection and last pad: the UI thread reads them to know what was chosen */
     atomic_store(&g_open, open);
 }
 
@@ -45,7 +48,7 @@ static lv_obj_t *make_item(lv_obj_t *parent, const char *text, lv_coord_t dx, lv
     return item;
 }
 
-void radial_menu_show(bool mouse_on) {
+void radial_menu_show(bool mouse_on, bool bigpicture_open) {
     radial_menu_hide();
     g_mouse_on = mouse_on;
     g_root = lv_obj_create(lv_layer_sys());
@@ -61,10 +64,13 @@ void radial_menu_show(bool mouse_on) {
                                       0, -h, &g_mouse_label);
     g_items[RADIAL_KEYBOARD] = make_item(g_root, locstr("Keyboard"), w, 0, NULL);
     g_items[RADIAL_END_STREAM] = make_item(g_root, locstr("End stream"), 0, h, NULL);
-    g_items[RADIAL_CANCEL] = make_item(g_root, locstr("Cancel"), -w, 0, NULL);
+    g_items[RADIAL_BIGPICTURE] = make_item(g_root, bigpicture_open ? locstr("Big Picture: close")
+                                                                   : locstr("Big Picture: open"),
+                                           -w, 0, NULL);
 
     lv_obj_t *hint = lv_label_create(g_root);
-    lv_label_set_text(hint, locstr("Left stick: choose   Release Start: confirm"));
+    lv_label_set_text(hint, locstr("Left stick: choose   Release Start: confirm\nStick centred: cancel"));
+    lv_obj_set_style_text_align(hint, LV_TEXT_ALIGN_CENTER, 0);
     lv_obj_align(hint, LV_ALIGN_CENTER, 0, 0);
     radial_menu_refresh();
 }

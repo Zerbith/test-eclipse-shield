@@ -78,7 +78,11 @@ be run against the real hosts/Shield, so everything user-visible is "untested" u
   (`session_virt_mouse.c`, new coop messages `MOUSE_MOVE`/`MOUSE_SCROLL_HR`). Toggle LB + right-stick click
   (needs Settings > Input > Virtual mouse ON) or the radial menu.
 - **Radial menu**: hold **Start 3 s** (`RADIAL_HOLD_MS` in `session_gamepad.c`); left stick picks Mouse (up) /
-  Keyboard (right) / End stream (down, quits on both PCs) / Cancel (left); release Start confirms.
+  Keyboard (right) / End stream (down, quits on both PCs) / Steam Big Picture open-close (left); release
+  Start confirms, stick centred = cancel (the old "Cancel" entry was replaced on 2026-10-24).
+- **Big Picture toggle** (`stream/input/host_actions.c`): Win+R, `steam://open|close/bigpicture` as UTF-8 text,
+  Enter. Goes to the PC(s) the controller is assigned to; the peer gets coop message `HOST_ACTION` (14).
+  Open/closed is only what we last sent, per host. UNTESTED until the user reports.
   Module `src/app/ui/streaming/radial_menu.c`. Short Start taps still reach the host.
 - **Android input filter** (`input_gamepad.c`): devices named remote/virtual/search or with < 4 axes are not
   treated as controllers (Shield remote, "Virtual Search" cluttered the co-op assignment).

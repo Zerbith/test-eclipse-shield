@@ -20,6 +20,7 @@
 #include "app_launch.h"
 #include "coop_gamepad_map.h"
 #include "coop_pointer.h"
+#include "host_actions.h"
 #include "stream/coop_msg_channel.h"
 #include "stream/video/coop_secondary.h"
 #include "input/input_gamepad.h"
@@ -719,6 +720,13 @@ void coop_input_send_keyboard(short key_code, char action, char modifiers) {
     coord_send(&m);
 }
 
+void coop_input_send_host_action(int action) {
+    coop_input_msg_t m;
+    mouse_msg_init(&m, COOP_INPUT_MSG_HOST_ACTION);   /* no slot or mask: it is for the PC */
+    m.sub = (uint8_t) action;
+    coord_send(&m);
+}
+
 unsigned coop_input_sent(void) {
     pthread_mutex_lock(&coord_state_lock);
     const unsigned value = stat_sent;
@@ -779,6 +787,9 @@ static void secondary_apply(const coop_input_msg_t *m) {
             break;
         case COOP_INPUT_MSG_KEYBOARD:
             LiSendKeyboardEvent(m->lx, (char) m->sub, (char) m->pad_type);
+            break;
+        case COOP_INPUT_MSG_HOST_ACTION:
+            host_action_run_local(m->sub);   /* own thread: never stalls this worker */
             break;
         case COOP_INPUT_MSG_MOUSE_SCROLL:
             if (m->lx != 0) {

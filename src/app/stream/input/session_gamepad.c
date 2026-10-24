@@ -62,7 +62,7 @@ static int radial_sector(short x, short y) {
     if (abs(y) >= abs(x)) {
         return y > 0 ? RADIAL_MOUSE : RADIAL_END_STREAM;   /* leftStickY is positive UP */
     }
-    return x > 0 ? RADIAL_KEYBOARD : RADIAL_CANCEL;
+    return x > 0 ? RADIAL_KEYBOARD : RADIAL_BIGPICTURE;
 }
 
 static bool keyboard_combo_pressed = false;

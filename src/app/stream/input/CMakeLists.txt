@@ -6,7 +6,8 @@ target_sources(moonlight-lib PRIVATE
         session_mouse.c
         session_pointer_gesture.c
         session_touch.c
-        session_virt_mouse.c)
+        session_virt_mouse.c
+        host_actions.c)
 if (FEATURE_INPUT_EVMOUSE)
     target_sources(moonlight-lib PRIVATE session_evmouse.c)
 endif ()

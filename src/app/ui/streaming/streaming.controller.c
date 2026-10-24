@@ -3,6 +3,7 @@
 #include "streaming.controller.h"
 #include "soft_keyboard.h"
 #include "radial_menu.h"
+#include "stream/input/host_actions.h"
 
 #include <SDL.h>
 #include "stream/video/session_video.h"
@@ -578,7 +579,8 @@ static bool on_event(lv_fragment_t *self, int code, void *userdata) {
         }
         case USER_RADIAL_OPEN: {
             session_t *session = controller->global->session;
-            radial_menu_show(session_vmouse_active(session));
+            radial_menu_show(session_vmouse_active(session),
+                             host_action_bigpicture_is_open(radial_menu_last_pad()));
             return true;
         }
         case USER_RADIAL_SELECT: {
@@ -587,6 +589,7 @@ static bool on_event(lv_fragment_t *self, int code, void *userdata) {
         }
         case USER_RADIAL_CLOSE: {
             const int choice = radial_menu_selection();
+            const int pad = radial_menu_last_pad();
             radial_menu_hide();
             radial_menu_set_open(false, -1);
             radial_menu_set_selection(RADIAL_NONE);
@@ -601,6 +604,8 @@ static bool on_event(lv_fragment_t *self, int code, void *userdata) {
                 bus_pushevent(USER_OPEN_SOFT_KEYBOARD, NULL, NULL);
             } else if (choice == RADIAL_END_STREAM) {
                 session_interrupt(session, true, STREAMING_INTERRUPT_USER);
+            } else if (choice == RADIAL_BIGPICTURE) {
+                host_action_bigpicture_toggle(pad);
             }
             return true;
         }

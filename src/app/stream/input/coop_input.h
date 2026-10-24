@@ -59,6 +59,7 @@ enum {
     COOP_INPUT_MSG_MOUSE_SCROLL_HR = 13, /**< high-resolution wheel (virtual mouse): lx = amount */
     COOP_INPUT_MSG_KEYBOARD = 11,   /**< key press/release: lx = key code, sub = action,
                                      *   pad_type = modifiers (the LiSendKeyboardEvent args) */
+    COOP_INPUT_MSG_HOST_ACTION = 14, /**< sub = HOST_ACTION_* (host_actions.h), e.g. Big Picture */
 };
 
 #pragma pack(push, 1)
@@ -172,6 +173,8 @@ void coop_input_send_mouse_move(int dx, int dy);
 void coop_input_send_mouse_scroll_hr(int amount);
 /** A key edge for the PEER's host -- keys follow the pane under the pointer (coop_pointer). */
 void coop_input_send_keyboard(short key_code, char action, char modifiers);
+/** Ask the PEER's process to run a HOST_ACTION_* on its connection (host_actions.h). */
+void coop_input_send_host_action(int action);
 
 /**
  * Secondary: connect to the coordinator and start applying received events to
