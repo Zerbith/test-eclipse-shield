@@ -40,6 +40,15 @@ public class EclipseActivity extends SDLActivity {
     private SurfaceView video1View;
     private SurfaceView video2View;
 
+    /** Called from native code (JNI): opens the in-app updater screen. */
+    public static void openUpdater() {
+        final EclipseActivity a = instance;
+        if (a == null) {
+            return;
+        }
+        a.runOnUiThread(() -> a.startActivity(new Intent(a, UpdateActivity.class)));
+    }
+
     /** Called from native code (JNI) on a non-UI thread. Blocks up to 3 s for the Surface. */
     public static Surface getVideoSurface() {
         return getVideoSurface(0);

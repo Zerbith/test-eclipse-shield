@@ -231,6 +231,10 @@ void eclipse_android_set_video_layout(int mode) {
     (void) call_activity_static("setCoopLayout", "(I)V", (jint) mode);
 }
 
+void eclipse_android_open_updater(void) {
+    (void) call_activity_static("openUpdater", "()V");
+}
+
 void eclipse_android_coop_stop(void) {
     (void) call_activity_static("stopCoopSecondary", "()V");
 }

@@ -12,8 +12,10 @@ android {
         applicationId 'org.eclipse.stream'
         minSdk 28          // Shield TV runs Android 9+ (API 28) on current firmware
         targetSdk 34
-        versionCode 1
-        versionName '0.1.0-android'
+        // CI passes -PappVersionCode=<run number> and -PappVersionName=<name>; local builds use 1.
+        // The in-app updater compares this number with the newest release.
+        versionCode (project.findProperty('appVersionCode') ?: '1').toInteger()
+        versionName (project.findProperty('appVersionName') ?: '0.1.0-android')
         ndk {
             // NVIDIA Shield TV (2015/2017/2019 and Pro) are all ARM64.
             abiFilters 'arm64-v8a'

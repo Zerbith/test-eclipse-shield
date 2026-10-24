@@ -12,6 +12,8 @@
     <!-- mDNS host discovery needs the multicast lock. -->
     <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <!-- In-app updater: installs the APK it downloaded (see UpdateActivity). -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
     <application
         android:allowBackup="true"
@@ -35,6 +37,11 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <activity
+            android:name=".UpdateActivity"
+            android:exported="false"
+            android:theme="@style/Theme.Eclipse" />
 
         <!-- Second stream of a co-op session. Its own process, see CoopSecondaryService. -->
         <service

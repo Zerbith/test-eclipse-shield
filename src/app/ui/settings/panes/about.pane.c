@@ -11,6 +11,9 @@
 #include "util/diag_report.h"
 #include "lvgl/util/lv_app_utils.h"
 #include "os_info.h"
+#ifdef __ANDROID__
+#include "platform/common/android_coop.h"
+#endif
 
 
 #define MAXIMUM_ROWS 32
@@ -50,6 +53,13 @@ static inline void about_line(lv_obj_t *parent, const char *title, const char *t
 static const char *module_name(const SS4S_ModuleInfo *info);
 
 static void share_logs_cb(lv_event_t *e);
+
+#ifdef __ANDROID__
+static void update_cb(lv_event_t *e) {
+    (void) e;
+    eclipse_android_open_updater();
+}
+#endif
 
 static inline void about_full_row(lv_obj_t *obj, int row) {
     lv_obj_set_grid_cell(obj, LV_GRID_ALIGN_STRETCH, 0, 4, LV_GRID_ALIGN_CENTER, row, 1);
@@ -107,6 +117,14 @@ static lv_obj_t *create_obj(lv_fragment_t *self, lv_obj_t *container) {
     lv_obj_center(share_label);
     lv_obj_set_grid_cell(share, LV_GRID_ALIGN_START, 0, 2, LV_GRID_ALIGN_CENTER, rowcount++, 1);
     lv_obj_add_event_cb(share, share_logs_cb, LV_EVENT_CLICKED, app);
+#ifdef __ANDROID__
+    lv_obj_t *update = lv_btn_create(view);
+    lv_obj_t *update_label = lv_label_create(update);
+    lv_label_set_text(update_label, locstr("Check for update..."));
+    lv_obj_center(update_label);
+    lv_obj_set_grid_cell(update, LV_GRID_ALIGN_START, 0, 2, LV_GRID_ALIGN_CENTER, rowcount++, 1);
+    lv_obj_add_event_cb(update, update_cb, LV_EVENT_CLICKED, app);
+#endif
     LV_ASSERT(rowcount <= MAXIMUM_ROWS);
     for (int i = 0; i < rowcount; i++) {
         controller->row_dsc[i] = LV_GRID_CONTENT;

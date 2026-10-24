@@ -23,6 +23,9 @@ bool eclipse_android_coop_dual_enabled(void);
  *  co-op), 2 = left/right halves (vertical co-op). */
 void eclipse_android_set_video_layout(int mode);
 
+/** Open the in-app updater screen (checks the CI-published APK and installs it). */
+void eclipse_android_open_updater(void);
+
 /** The secondary writes its process id to a file; 0 when there is none. */
 int eclipse_android_coop_pid(void);
 

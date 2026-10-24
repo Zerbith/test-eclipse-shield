@@ -12,6 +12,9 @@ on:
       - 'core/**'
       - '.github/workflows/build-android.yml'
 
+permissions:
+  contents: write
+
 jobs:
   apk:
     runs-on: ubuntu-24.04
@@ -63,13 +66,26 @@ jobs:
           gradle-version: '8.9'
 
       - name: Assemble APK
-        run: gradle -p android :app:assembleRelease --no-daemon
+        run: gradle -p android :app:assembleRelease --no-daemon -PappVersionCode=${{ github.run_number }} -PappVersionName="0.1.${{ github.run_number }}-${GITHUB_SHA::7}"
 
       - name: Collect APK
         run: |
           mkdir -p dist
           cp android/app/build/outputs/apk/release/*.apk dist/eclipse-android-arm64.apk
           ls -l dist
+
+      # Publish the APK as the rolling release the in-app updater reads (private repo: the app
+      # needs a read-only token). Only for pushes to main.
+      - name: Publish APK for the in-app updater
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cp dist/eclipse-android-arm64.apk "dist/eclipse-android-${{ github.run_number }}.apk"
+          gh release delete android-latest --yes --cleanup-tag || true
+          gh release create android-latest "dist/eclipse-android-${{ github.run_number }}.apk" \
+            --title "Build ${{ github.run_number }} (${GITHUB_SHA::7})" \
+            --notes "Rolling build for the in-app updater." --prerelease --target "$GITHUB_SHA"
 
       - uses: actions/upload-artifact@v4
         with:
