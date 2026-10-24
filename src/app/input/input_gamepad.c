@@ -40,6 +40,20 @@ bool app_input_init_gamepad(app_input_t *input, int device_index) {
             return false;
         }
         SDL_Joystick *joystick = SDL_GameControllerGetJoystick(controller);
+#ifdef __ANDROID__
+        /* THE SHIELD LISTS MORE THAN ITS GAMEPADS: the remote and the "virtual" search/keyboard
+         * devices Android creates all show up as controllers. They are not pads anyone plays with,
+         * and they cluttered the co-op controller assignment. Real pads (Xbox, Shield Controller,
+         * DualSense...) have two analog sticks, so fewer than four axes or a remote/virtual/search
+         * name means "not a gamepad". The remote keeps navigating the menus as a keyboard. */
+        if (str_contains_ci(name, "remote") || str_contains_ci(name, "virtual") ||
+            str_contains_ci(name, "search") || SDL_JoystickNumAxes(joystick) < 4) {
+            commons_log_info("Input", "Ignoring non-gamepad input device \"%s\" (%d axes, GUID %s)",
+                             name != NULL ? name : "?", SDL_JoystickNumAxes(joystick), guidstr);
+            SDL_GameControllerClose(controller);
+            return false;
+        }
+#endif
 #ifdef TARGET_WEBOS
         if (webos_should_ignore_controller_like_device(name, guidstr, joystick)) {
             SDL_GameControllerClose(controller);
