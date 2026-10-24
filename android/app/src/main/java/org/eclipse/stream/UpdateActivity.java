@@ -372,15 +372,18 @@ public class UpdateActivity extends Activity {
                 new PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL);
         params.setAppPackageName(getPackageName());
         int id = installer.createSession(params);
-        try (PackageInstaller.Session session = installer.openSession(id);
-             InputStream in = new java.io.FileInputStream(apk);
-             OutputStream out = session.openWrite("update", 0, apk.length())) {
-            byte[] buf = new byte[65536];
-            int n;
-            while ((n = in.read(buf)) > 0) {
-                out.write(buf, 0, n);
+        try (PackageInstaller.Session session = installer.openSession(id)) {
+            // The write stream MUST be closed before commit(), or Android refuses with
+            // "SecurityException: Files still open".
+            try (InputStream in = new java.io.FileInputStream(apk);
+                 OutputStream out = session.openWrite("update", 0, apk.length())) {
+                byte[] buf = new byte[65536];
+                int n;
+                while ((n = in.read(buf)) > 0) {
+                    out.write(buf, 0, n);
+                }
+                session.fsync(out);
             }
-            session.fsync(out);
             Intent intent = new Intent(ACTION_STATUS).setPackage(getPackageName());
             int flags = PendingIntent.FLAG_UPDATE_CURRENT | (Build.VERSION.SDK_INT >= 31 ? PendingIntent.FLAG_MUTABLE : 0);
             PendingIntent pending = PendingIntent.getBroadcast(this, id, intent, flags);
