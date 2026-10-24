@@ -243,6 +243,19 @@ bool session_has_input(session_t *session) {
     return session->input.started;
 }
 
+bool session_vmouse_active(session_t *session) {
+    return session != NULL && session_input_is_vmouse_active(&session->input.vmouse);
+}
+
+void session_vmouse_flip(session_t *session) {
+    if (session == NULL) {
+        return;
+    }
+    const bool value = !session_input_is_vmouse_active(&session->input.vmouse);
+    commons_log_info("Input", "Radial menu: virtual mouse %s", value ? "ON" : "OFF");
+    session_input_set_vmouse_active(&session->input.vmouse, value);
+}
+
 void session_toggle_vmouse(session_t *session) {
     bool value = session->config.vmouse && !session_input_is_vmouse_active(&session->input.vmouse);
     commons_log_info("Input", "Virtual mouse combo: setting %s, mouse is now %s",

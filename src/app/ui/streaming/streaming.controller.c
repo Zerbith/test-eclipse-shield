@@ -3,7 +3,6 @@
 #include "streaming.controller.h"
 #include "soft_keyboard.h"
 #include "radial_menu.h"
-#include "stream/input/session_virt_mouse.h"
 
 #include <SDL.h>
 #include "stream/video/session_video.h"
@@ -579,7 +578,7 @@ static bool on_event(lv_fragment_t *self, int code, void *userdata) {
         }
         case USER_RADIAL_OPEN: {
             session_t *session = controller->global->session;
-            radial_menu_show(session != NULL && session_input_is_vmouse_active(&session->input.vmouse));
+            radial_menu_show(session_vmouse_active(session));
             return true;
         }
         case USER_RADIAL_SELECT: {
@@ -597,8 +596,7 @@ static bool on_event(lv_fragment_t *self, int code, void *userdata) {
             }
             if (choice == RADIAL_MOUSE) {
                 /* Turned on from here regardless of the Settings switch: choosing it IS the request. */
-                session_input_set_vmouse_active(&session->input.vmouse,
-                                                !session_input_is_vmouse_active(&session->input.vmouse));
+                session_vmouse_flip(session);
             } else if (choice == RADIAL_KEYBOARD) {
                 bus_pushevent(USER_OPEN_SOFT_KEYBOARD, NULL, NULL);
             } else if (choice == RADIAL_END_STREAM) {
