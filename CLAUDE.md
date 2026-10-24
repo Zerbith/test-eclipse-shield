@@ -6,8 +6,8 @@ practical. Windows PC with **CMD (not PowerShell)** and `adb`. Tell the user pla
 
 ## Goal
 Upstream https://github.com/PreceptorOfMagic/Eclipse (GPL-3.0, C/CMake/SDL2/LVGL, Moonlight descendant)
-ships no working Android co-op. This repo (`Zerbith/test-eclipse-shield`, private, branch `main`, push
-directly) is an Android port for an **NVIDIA Shield TV** (arm64, Android 11, 4K TV, wired Ethernet).
+ships no working Android co-op. This repo (`Zerbith/test-eclipse-shield`, **public since 2026-10-24** (was
+private; made public so Actions minutes are free), branch `main`, push directly) is an Android port for an **NVIDIA Shield TV** (arm64, Android 11, 4K TV, wired Ethernet).
 Main goal: **co-op stream** (two hosts, one TV) with the **hardware decoder** at 4K, both orientations
 (horizontal = top/bottom, vertical = left/right). Software decoding was rejected by the user.
 
@@ -22,23 +22,32 @@ GPU HEVC encoder request, no video, "Network error"). Our port is a different ap
 1. I (Claude) change code, commit, push to `main`.
 2. GitHub Actions builds (`.github/workflows/build-android.yml`). **Only this workflow is enabled**; the other
    nine were disabled on purpose to save Actions minutes (re-enable in GitHub > Actions if ever needed).
-3. Every push to `main` publishes the APK as the rolling release **`android-latest`** (asset
+3. Every push to `main` and every manual run on `main` (`gh workflow run build-android.yml --repo
+   Zerbith/test-eclipse-shield --ref main`) publishes the APK as the rolling release **`android-latest`** (asset
    `eclipse-android-<run number>.apk`; versionCode = run number). The artifact `eclipse-android-arm64` also exists.
 4. The user updates on the Shield with the **in-app updater** (Settings > About > "Check for update...")
    or `adb install -r <apk>`. Same signing key => in-place update, pairing/settings are kept.
 5. For bugs the user sends a log: `adb logcat -c`, reproduce, `adb logcat -d -s Eclipse EclipseCoop DEBUG AndroidRuntime > log.txt`.
 6. Watch CI: `gh run list/view --repo Zerbith/test-eclipse-shield`. Annotations (not full logs) are readable:
    `gh api repos/Zerbith/test-eclipse-shield/check-runs/<job id>/annotations`. Full job logs return 403.
-   "The job was not started because recent account payments have failed..." = the user's GitHub billing/limit,
-   not a code problem. The user does not want to pay; wait for the monthly reset.
+   Builds are free since the repo is public (standard runners). If "The job was not started because recent
+   account payments have failed..." shows up again, it is the user's GitHub billing/limit, not a code problem.
+   The user does not want to pay. Do not make the repo private again without asking (minutes would count again).
+
+### Local setup (user's Windows PC, set up 2026-10-24)
+- Clone: `D:\eclipse Repo`. Git: `C:\Program Files\Git\cmd\git.exe`, GitHub CLI: `C:\Program Files\GitHub CLI\gh.exe`
+  (both via winget; may not be on PATH in already-open shells, so call them by full path).
+- `gh` is logged in as `Zerbith`. Repo-local git identity: `Claude <noreply@anthropic.com>` (same as older commits).
+- Interactive prompts (sign-in) do not work in Claude's background shell; run them in the user's Terminal panel.
 
 The sandbox cannot build Android (SDK/NDK hosts blocked, no KVM), so CI is the only compiler. Nothing here can
 be run against the real hosts/Shield, so everything user-visible is "untested" until the user reports.
 `gh` GraphQL is blocked; use `gh api` (REST).
 
 ## Signing / updater
-- One fixed key for every build: `android/app/eclipse-port.keystore` (test key, private repo, passwords in
-  `android/app/build.gradle`). Do NOT change it, or users must uninstall (and lose pairing).
+- One fixed key for every build: `android/app/eclipse-port.keystore` (test key, passwords in
+  `android/app/build.gradle`; now publicly visible, the user accepted that). Do NOT change it, or users must
+  uninstall (and lose pairing).
 - `UpdateActivity.java` reads release `android-latest` via the GitHub API with a **read-only fine-grained token**
   (Contents: read, this repo only) that the user typed once (`adb shell input text <token>` works, the token
   field is focused when empty). Download follows the redirect WITHOUT the token. Install via PackageInstaller;
@@ -80,9 +89,9 @@ be run against the real hosts/Shield, so everything user-visible is "untested" u
 ## State at handover (what the user last confirmed)
 - Dual-decoder co-op works with both orders (AMD first / NVIDIA first), horizontal and vertical, "pictures
   fine". Controller mouse, radial menu, updater, icon, controller filter all confirmed working.
-- **Pending build**: commit `238b7cf` "Updater: clear focus highlight for the buttons and token field" is pushed
-  but NOT built yet (GitHub billing block). Once builds are allowed again, trigger with
-  `gh workflow run build-android.yml --repo Zerbith/test-eclipse-shield --ref main` and check the run.
+- Commit `238b7cf` "Updater: clear focus highlight for the buttons and token field" is built and published
+  (build 56, `eclipse-android-56.apk`, 2026-10-24); not yet confirmed on the Shield.
+- CI warns that `actions/setup-java@v4` and the Node 20 actions are deprecated; still works, upgrade some time.
 - Not yet reported/verified: 60 FPS smoothness at 4K, audio quality, seam visibility, "monitors off" on the
   AMD host after the env fix, End-stream semantics ("only that PC" was asked once; currently quits both).
 
@@ -96,5 +105,5 @@ be run against the real hosts/Shield, so everything user-visible is "untested" u
 - `session_t` is opaque in `src/app/ui/**`; use helpers in `stream/session.h` (`session_vmouse_active/flip`).
 - Groovy: `versionCode (x).toInteger()` parses as a method call; use `versionCode = ...`.
 - Editing a file in the coop env: check that `setenv` uses the overridden `g_session`, not the caller's copy.
-- The user's repo is private; never put the user's GitHub token into code or the APK.
+- The repo is public: never put the user's GitHub token or any other secret into code, commits or the APK.
 - Do not re-enable software decoding or the old composite path as a "fix"; both were rejected.
