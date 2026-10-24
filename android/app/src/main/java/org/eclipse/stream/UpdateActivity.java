@@ -137,7 +137,12 @@ public class UpdateActivity extends Activity {
         ScrollView scroll = new ScrollView(this);
         scroll.addView(root);
         setContentView(scroll);
-        checkButton.requestFocus();
+        // No token yet: start in the token field, so `adb shell input text <token>` fills it.
+        if (prefs().getString("token", "").isEmpty()) {
+            tokenField.requestFocus();
+        } else {
+            checkButton.requestFocus();
+        }
         say(prefs().getString("token", "").isEmpty()
                 ? "Enter your GitHub token first, then choose Save token."
                 : "Choose Check for update.");
