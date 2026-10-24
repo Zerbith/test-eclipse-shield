@@ -10,6 +10,8 @@ import android.content.SharedPreferences;
 import android.content.pm.PackageInfo;
 import android.content.pm.PackageInstaller;
 import android.graphics.Color;
+import android.graphics.drawable.GradientDrawable;
+import android.graphics.drawable.StateListDrawable;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
@@ -106,6 +108,11 @@ public class UpdateActivity extends Activity {
         tokenField.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
         tokenField.setTextColor(Color.WHITE);
         tokenField.setText(prefs().getString("token", ""));
+        StateListDrawable fieldBg = new StateListDrawable();
+        fieldBg.addState(new int[]{android.R.attr.state_focused}, box(Color.rgb(28, 28, 40), Color.rgb(30, 120, 255), 6));
+        fieldBg.addState(new int[]{}, box(Color.rgb(28, 28, 40), Color.rgb(90, 90, 105), 2));
+        tokenField.setBackground(fieldBg);
+        tokenField.setPadding(24, 16, 24, 16);
         root.addView(tokenField);
 
         Button save = button("Save token");
@@ -173,12 +180,36 @@ public class UpdateActivity extends Activity {
         b.setText(text);
         b.setAllCaps(false);
         b.setFocusable(true);
+        b.setTextSize(20);
+        b.setPadding(48, 20, 48, 20);
+        b.setMinWidth(420);
+        b.setTextColor(new android.content.res.ColorStateList(
+                new int[][]{{-android.R.attr.state_enabled}, {}},
+                new int[]{Color.rgb(120, 120, 130), Color.WHITE}));
+        // Focus must be unmistakable on a TV: bright blue fill and a thick white outline.
+        StateListDrawable bg = new StateListDrawable();
+        bg.addState(new int[]{-android.R.attr.state_enabled}, box(Color.rgb(40, 40, 48), Color.rgb(40, 40, 48), 0));
+        bg.addState(new int[]{android.R.attr.state_focused}, box(Color.rgb(30, 120, 255), Color.WHITE, 6));
+        bg.addState(new int[]{android.R.attr.state_pressed}, box(Color.rgb(90, 160, 255), Color.WHITE, 6));
+        bg.addState(new int[]{}, box(Color.rgb(58, 58, 70), Color.rgb(90, 90, 105), 2));
+        b.setBackground(bg);
+        b.setStateListAnimator(null);
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
         lp.topMargin = 16;
         lp.gravity = Gravity.START;
         b.setLayoutParams(lp);
         return b;
+    }
+
+    private static GradientDrawable box(int fill, int stroke, int strokeWidth) {
+        GradientDrawable d = new GradientDrawable();
+        d.setColor(fill);
+        d.setCornerRadius(18);
+        if (strokeWidth > 0) {
+            d.setStroke(strokeWidth, stroke);
+        }
+        return d;
     }
 
     private SharedPreferences prefs() {
