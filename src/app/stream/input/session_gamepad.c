@@ -1,4 +1,6 @@
 #include "app.h"
+#include <stdint.h>
+#include <stdlib.h>
 
 #include <Limelight.h>
 
@@ -9,6 +11,7 @@
 #include "input/input_gamepad.h"
 #include "stream/session.h"
 #include "stream/input/session_virt_mouse.h"
+#include "ui/streaming/radial_menu.h"
 #include "logging.h"
 #include "coop_input.h"
 
@@ -19,6 +22,49 @@
 
 static bool quit_combo_pressed = false;
 static bool vmouse_combo_pressed = false;
+/* ---- RADIAL MENU: hold Start ---------------------------------------------------------------
+ * Holding Start for RADIAL_HOLD_MS opens the radial menu (ui/streaming/radial_menu.h). While it is
+ * open the pad that opened it is swallowed here: the left stick picks an entry and releasing
+ * Start confirms. A short tap of Start is untouched and reaches the host as always. */
+#define RADIAL_HOLD_MS 3000
+#define RADIAL_STICK_THRESHOLD 16000
+static SDL_TimerID start_hold_timer = 0;
+static int start_hold_pad = -1;
+static bool radial_primed = false;
+static short radial_lx = 0, radial_ly = 0;
+
+static Uint32 start_hold_cb(Uint32 interval, void *param) {
+    (void) interval;
+    const int pad = (int) (intptr_t) param;
+    start_hold_timer = 0;
+    if (start_hold_pad != pad) {
+        return 0;
+    }
+    radial_primed = false;
+    radial_lx = radial_ly = 0;
+    radial_menu_set_open(true, pad);
+    bus_pushevent(USER_RADIAL_OPEN, NULL, NULL);
+    return 0;
+}
+
+static void start_hold_cancel(void) {
+    start_hold_pad = -1;
+    if (start_hold_timer != 0) {
+        SDL_RemoveTimer(start_hold_timer);
+        start_hold_timer = 0;
+    }
+}
+
+static int radial_sector(short x, short y) {
+    if ((int) x * x + (int) y * y < (int) RADIAL_STICK_THRESHOLD * RADIAL_STICK_THRESHOLD) {
+        return RADIAL_NONE;
+    }
+    if (abs(y) >= abs(x)) {
+        return y > 0 ? RADIAL_MOUSE : RADIAL_END_STREAM;   /* leftStickY is positive UP */
+    }
+    return x > 0 ? RADIAL_KEYBOARD : RADIAL_CANCEL;
+}
+
 static bool keyboard_combo_pressed = false;
 static bool stats_combo_pressed = false;
 
@@ -51,6 +97,27 @@ void stream_input_handle_cbutton(stream_input_t *input, const SDL_ControllerButt
     app_gamepad_state_t *gamepad = app_input_gamepad_state_by_instance_id(input->input, event->which);
     if (gamepad == NULL) {
         return;
+    }
+    if (radial_menu_is_open() && radial_menu_owner_pad() == gamepad->gs_id) {
+        if (!radial_primed) {
+            radial_primed = true;
+            release_buttons(input, gamepad);   /* the host stops seeing a held Start / stick */
+        }
+        if (event->button == SDL_CONTROLLER_BUTTON_START && event->type == SDL_CONTROLLERBUTTONUP) {
+            radial_menu_set_open(false, -1);
+            bus_pushevent(USER_RADIAL_CLOSE, NULL, NULL);
+        }
+        return;
+    }
+    if (event->button == SDL_CONTROLLER_BUTTON_START) {
+        if (event->type == SDL_CONTROLLERBUTTONDOWN) {
+            if (start_hold_timer == 0 && !radial_menu_is_open()) {
+                start_hold_pad = gamepad->gs_id;
+                start_hold_timer = SDL_AddTimer(RADIAL_HOLD_MS, start_hold_cb, (void *) (intptr_t) gamepad->gs_id);
+            }
+        } else if (start_hold_pad == gamepad->gs_id) {
+            start_hold_cancel();
+        }
     }
     int button = 0;
     /* Per controller: a detected Nintendo pad has its own layout setting (input_gamepad.c). */
@@ -184,6 +251,25 @@ void stream_input_handle_cbutton(stream_input_t *input, const SDL_ControllerButt
 void stream_input_handle_caxis(stream_input_t *input, const SDL_ControllerAxisEvent *event) {
     app_gamepad_state_t *gamepad = app_input_gamepad_state_by_instance_id(input->input, event->which);
     if (gamepad == NULL) {
+        return;
+    }
+    if (radial_menu_is_open() && radial_menu_owner_pad() == gamepad->gs_id) {
+        if (!radial_primed) {
+            radial_primed = true;
+            release_buttons(input, gamepad);
+        }
+        if (event->axis == SDL_CONTROLLER_AXIS_LEFTX) {
+            radial_lx = SDL_max(event->value, -32767);
+        } else if (event->axis == SDL_CONTROLLER_AXIS_LEFTY) {
+            radial_ly = (short) -SDL_max(event->value, (short) -32767);
+        } else {
+            return;
+        }
+        const int sector = radial_sector(radial_lx, radial_ly);
+        if (sector != radial_menu_selection()) {
+            radial_menu_set_selection(sector);
+            bus_pushevent(USER_RADIAL_SELECT, NULL, NULL);
+        }
         return;
     }
     switch (event->axis) {

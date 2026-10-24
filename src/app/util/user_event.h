@@ -16,6 +16,9 @@
 #define USER_CLOSE_SOFT_KEYBOARD 532
 #define USER_OPEN_SOFT_KEYBOARD 533
 #define USER_TOGGLE_STATS_PIN 534
+#define USER_RADIAL_OPEN 535
+#define USER_RADIAL_SELECT 536
+#define USER_RADIAL_CLOSE 537
 
 
 extern unsigned int app_userevent_remotebutton;

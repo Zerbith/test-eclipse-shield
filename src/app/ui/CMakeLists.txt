@@ -18,6 +18,7 @@ target_sources(moonlight-lib PRIVATE
         streaming/streaming.view.c
         streaming/streaming.controller.c
         streaming/soft_keyboard.c
+        streaming/radial_menu.c
         streaming/pin_autoentry.c
         streaming/hints.c
         help/help.dialog.c
