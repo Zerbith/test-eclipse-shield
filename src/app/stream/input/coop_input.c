@@ -689,6 +689,27 @@ void coop_input_send_mouse_scroll(int vertical, int horizontal) {
     coord_send(&m);
 }
 
+void coop_input_send_mouse_move(int dx, int dy) {
+    if (dx == 0 && dy == 0) {
+        return;
+    }
+    coop_input_msg_t m;
+    mouse_msg_init(&m, COOP_INPUT_MSG_MOUSE_MOVE);
+    m.lx = (int16_t) dx;
+    m.ly = (int16_t) dy;
+    coord_send(&m);
+}
+
+void coop_input_send_mouse_scroll_hr(int amount) {
+    if (amount == 0) {
+        return;
+    }
+    coop_input_msg_t m;
+    mouse_msg_init(&m, COOP_INPUT_MSG_MOUSE_SCROLL_HR);
+    m.lx = (int16_t) amount;
+    coord_send(&m);
+}
+
 void coop_input_send_keyboard(short key_code, char action, char modifiers) {
     coop_input_msg_t m;
     mouse_msg_init(&m, COOP_INPUT_MSG_KEYBOARD);   /* no slot or mask: a key belongs to a pane */
@@ -749,6 +770,12 @@ static void secondary_apply(const coop_input_msg_t *m) {
             break;
         case COOP_INPUT_MSG_MOUSE_BUTTON:
             LiSendMouseButtonEvent((char) m->sub, (int) m->buttons_lo);
+            break;
+        case COOP_INPUT_MSG_MOUSE_MOVE:
+            LiSendMouseMoveEvent(m->lx, m->ly);
+            break;
+        case COOP_INPUT_MSG_MOUSE_SCROLL_HR:
+            LiSendHighResScrollEvent(m->lx);
             break;
         case COOP_INPUT_MSG_KEYBOARD:
             LiSendKeyboardEvent(m->lx, (char) m->sub, (char) m->pad_type);

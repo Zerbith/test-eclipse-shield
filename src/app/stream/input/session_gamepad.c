@@ -91,7 +91,7 @@ void stream_input_handle_cbutton(stream_input_t *input, const SDL_ControllerButt
             break;
         case SDL_CONTROLLER_BUTTON_LEFTSTICK:
             button = LS_CLK_FLAG;
-            vmouse_set_modifier(&input->vmouse, event->state == SDL_PRESSED);
+            vmouse_set_modifier(&input->vmouse, gamepad->gs_id, event->state == SDL_PRESSED);
             break;
         case SDL_CONTROLLER_BUTTON_RIGHTSTICK:
             button = RS_CLK_FLAG;
@@ -223,8 +223,8 @@ void stream_input_handle_caxis(stream_input_t *input, const SDL_ControllerAxisEv
     filter_deadzone_2axis(input, &gamepad->rightStickX, &gamepad->rightStickY);
 
     if (vmouse_intercepted(input, gamepad)) {
-        vmouse_set_vector(&input->vmouse, gamepad->rightStickX, gamepad->rightStickY);
-        vmouse_set_trigger(&input->vmouse, gamepad->leftTrigger, gamepad->rightTrigger);
+        vmouse_set_vector(&input->vmouse, gamepad->gs_id, gamepad->rightStickX, gamepad->rightStickY);
+        vmouse_set_trigger(&input->vmouse, gamepad->gs_id, gamepad->leftTrigger, gamepad->rightTrigger);
     }
 
     if (input->view_only || !stream_input_moonlight_gamepad_enabled(input)) {

@@ -55,6 +55,8 @@ enum {
     COOP_INPUT_MSG_MOUSE_POS = 8,   /**< absolute position, ALREADY PANE-LOCAL */
     COOP_INPUT_MSG_MOUSE_BUTTON = 9,/**< mouse button press/release */
     COOP_INPUT_MSG_MOUSE_SCROLL = 10, /**< wheel, both axes in one message */
+    COOP_INPUT_MSG_MOUSE_MOVE = 12, /**< RELATIVE move (controller virtual mouse): lx/ly = dx/dy */
+    COOP_INPUT_MSG_MOUSE_SCROLL_HR = 13, /**< high-resolution wheel (virtual mouse): lx = amount */
     COOP_INPUT_MSG_KEYBOARD = 11,   /**< key press/release: lx = key code, sub = action,
                                      *   pad_type = modifiers (the LiSendKeyboardEvent args) */
 };
@@ -165,6 +167,9 @@ void coop_input_send_touchpad(int gs_id, uint16_t active_mask,
 void coop_input_send_mouse_position(int x, int y, int ref_w, int ref_h);
 void coop_input_send_mouse_button(int action, int button);
 void coop_input_send_mouse_scroll(int vertical, int horizontal);
+/** Relative move / high-res wheel of a controller's virtual mouse, for the PEER's host. */
+void coop_input_send_mouse_move(int dx, int dy);
+void coop_input_send_mouse_scroll_hr(int amount);
 /** A key edge for the PEER's host -- keys follow the pane under the pointer (coop_pointer). */
 void coop_input_send_keyboard(short key_code, char action, char modifiers);
 

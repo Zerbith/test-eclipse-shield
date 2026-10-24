@@ -18,15 +18,27 @@ typedef struct app_input_t app_input_t;
 typedef struct session_config_t session_config_t;
 typedef struct session_t session_t;
 
-typedef struct session_input_vmouse_t {
-    struct {
-        bool active;
-        short x, y;
-        bool l, r;
-        bool modifier;
-    } state;
+#define VMOUSE_PADS 4
+
+typedef struct session_input_vmouse_t session_input_vmouse_t;
+
+/* One virtual mouse PER CONTROLLER. In co-op each pad is assigned to a host, and the
+ * mouse it drives must go to THAT host (the second PC over the co-op input link), not
+ * always to the first. Sharing one state also meant a second pad's idle stick cancelled
+ * the first pad's movement. */
+typedef struct {
+    session_input_vmouse_t *owner;
+    int pad;                 /* source controller id (gs_id) */
+    short x, y;
+    bool l, r;
+    bool modifier;
     SDL_TimerID timer_id;
-} session_input_vmouse_t;
+} session_input_vmouse_pad_t;
+
+struct session_input_vmouse_t {
+    bool active;
+    session_input_vmouse_pad_t pads[VMOUSE_PADS];
+};
 
 typedef struct stream_input_t {
     session_t *session;
