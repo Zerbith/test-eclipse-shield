@@ -27,11 +27,26 @@ android {
         }
     }
 
+    signingConfigs {
+        // ONE FIXED KEY FOR EVERY BUILD. A debug key generated per CI run made each APK
+        // look like a different app to Android, so `adb install -r` was refused and the
+        // app had to be uninstalled first, losing pairing and settings. With a stable
+        // key a new build installs over the old one as a plain update.
+        // This is a test key for a private repo; use your own keystore to distribute.
+        fixed {
+            storeFile file('eclipse-port.keystore')
+            storePassword 'eclipseport'
+            keyAlias 'eclipseport'
+            keyPassword 'eclipseport'
+        }
+    }
+
     buildTypes {
+        debug {
+            signingConfig signingConfigs.fixed
+        }
         release {
-            // Signed with the debug key so the APK installs on a Shield via adb or a file manager.
-            // Use your own keystore for anything you distribute.
-            signingConfig signingConfigs.debug
+            signingConfig signingConfigs.fixed
             minifyEnabled false
         }
     }
