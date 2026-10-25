@@ -103,6 +103,14 @@ be run against the real hosts/Shield, so everything user-visible is "untested" u
   MediaCodec output thread now renders only the newest picture of a burst (`skippedStale` in the
   `EclipseMediaCodec` stats[N] log line every 300 frames, next to `droppedBusy`). Cause of (1) NOT confirmed;
   needs a log with tag `EclipseMediaCodec`.
+- Build 58 fixed the freezes (user confirmed). Audio, from a captured log 2026-10-25: the `:coop` process gets
+  Android's 40 ms background timer slack, so `SDL_Delay(1)` in the secondary's stop-and-wait sender slept ~41 ms
+  -> only ~24k of 48k frames/s reached the mixer (crackle, `rejected_window`, FIFO full = 1-3 s delay).
+  Sender now waits on poll()/cond + PR_SET_TIMERSLACK. Also every stream end crashed in SDL 2.30's AAudio driver
+  (SDL_PumpEvents -> AudioStreamTrack::getTimestamp); app.c now asks SDL for OpenSL ES first. Both UNTESTED.
+- Capturing logs myself: `D:\adb\adb.exe -s 192.168.0.100:5555` (Shield over network). The Shield's logcat
+  buffer was 256 KB (too small, the user's log came out empty); set to 16 MB with `logcat -b all -G 16M`
+  (may reset on reboot). Look for `[COOP-AUD.secondary]` / `[COOP-AUD.pull]` lines every 5 s.
 - Not yet reported/verified: 60 FPS smoothness at 4K, audio quality, seam visibility, "monitors off" on the
   AMD host after the env fix, End-stream semantics ("only that PC" was asked once; currently quits both).
 

@@ -110,6 +110,12 @@ int app_init(app_t *app, app_settings_loader *settings_loader, int argc, char *a
     commons_logging_init("aurora");
     SDL_LogSetOutputFunction(commons_sdl_log, NULL);
     SDL_SetAssertionHandler(app_assertion_handler_abort, NULL);
+#ifdef __ANDROID__
+    /* OpenSL ES, not AAudio (Shield, 2026-10-25): SDL 2.30's AAudio driver checks the playing
+     * stream from SDL_PumpEvents on the main thread while the audio thread closes it, and every
+     * stream end crashed there (SIGSEGV in AudioStreamTrack::getTimestamp). */
+    SDL_SetHint(SDL_HINT_AUDIODRIVER, "openslES,android,aaudio");   /* tried in this order */
+#endif
     SDL_Init(0);
 #ifdef OS_WINDOWS
     /* A GUI-subsystem executable has no console, so stderr otherwise disappears.

@@ -26,6 +26,9 @@
 #include <unistd.h>
 
 #include <poll.h>
+#ifdef __ANDROID__
+#include <sys/prctl.h>
+#endif
 #include <opus_multistream.h>
 #include <SDL.h>
 #include <ss4s.h>
@@ -1574,6 +1577,7 @@ static void secondary_decode_log(void) {
 }
 static SDL_Thread *sec_thread;
 static SDL_mutex *sec_lock;
+static SDL_cond *sec_cond;      /* signalled by the decoder when PCM is queued */
 static SDL_atomic_t sec_run;
 static coop_audio_fifo_t sec_fifo;
 static uint64_t sec_epoch;
@@ -1654,8 +1658,32 @@ static void secondary_disconnect(void) {
     sec_fd = -1;
 }
 
+/* WAIT FOR AN EVENT, NOT A TIMER (Shield, 2026-10-25). The secondary runs in a background service
+ * process, and Android gives background threads a 40 ms timer slack: every SDL_Delay(1) here slept
+ * ~41 ms. With one message in flight per ACK that capped the link at ~960 frames per 41 ms -- half
+ * of 48 kHz -- so half of the second PC's sound was dropped (crackle) and its FIFO sat full (500 ms
+ * and more behind). Wake on the ACK arriving on the socket, or on the decoder queueing PCM; the
+ * timeout is only a fallback, so its slack no longer matters. */
+#define COOP_AUDIO_SEND_WAIT_MS 5
+
+static void secondary_wait(bool awaiting_ack) {
+    if (awaiting_ack && sec_fd >= 0) {
+        struct pollfd pfd = {.fd = (int) sec_fd, .events = POLLIN};
+        (void) poll(&pfd, 1, COOP_AUDIO_SEND_WAIT_MS);
+        return;
+    }
+    SDL_LockMutex(sec_lock);
+    if (sec_fifo.count == 0 && SDL_AtomicGet(&sec_run)) {
+        SDL_CondWaitTimeout(sec_cond, sec_lock, COOP_AUDIO_SEND_WAIT_MS);
+    }
+    SDL_UnlockMutex(sec_lock);
+}
+
 static int secondary_send_main(void *unused) {
     (void)unused;
+#ifdef __ANDROID__
+    (void) prctl(PR_SET_TIMERSLACK, 50000UL, 0, 0, 0);   /* 50 us, like a foreground thread */
+#endif
     bool awaiting_ack = false;
     uint64_t pending_end = 0, sent_us = 0;
     unsigned pending_frames = 0;
@@ -1748,7 +1776,7 @@ static int secondary_send_main(void *unused) {
                 }
             }
         }
-        SDL_Delay(1);
+        secondary_wait(awaiting_ack);
     }
     secondary_disconnect();
     return 0;
@@ -1786,9 +1814,12 @@ static int coop_secondary_aud_init(int audioConfiguration, const POPUS_MULTISTRE
     sec_epoch = audio_time_us();
     stat_sent = stat_dropped = 0;
     sec_lock = SDL_CreateMutex();
-    if (!sec_lock || !coop_audio_fifo_init(&sec_fifo, COOP_AUDIO_RING_FRAMES, (unsigned)sec_channels)) {
+    sec_cond = SDL_CreateCond();
+    if (!sec_lock || !sec_cond || !coop_audio_fifo_init(&sec_fifo, COOP_AUDIO_RING_FRAMES, (unsigned)sec_channels)) {
         if (sec_lock) SDL_DestroyMutex(sec_lock);
         sec_lock = NULL;
+        if (sec_cond) SDL_DestroyCond(sec_cond);
+        sec_cond = NULL;
         opus_multistream_decoder_destroy(sec_decoder); sec_decoder = NULL;
         return -1;
     }
@@ -1796,6 +1827,7 @@ static int coop_secondary_aud_init(int audioConfiguration, const POPUS_MULTISTRE
     sec_thread = SDL_CreateThread(secondary_send_main, "coop-audio-send", NULL);
     if (!sec_thread) {
         coop_audio_fifo_destroy(&sec_fifo); SDL_DestroyMutex(sec_lock); sec_lock = NULL;
+        SDL_DestroyCond(sec_cond); sec_cond = NULL;
         opus_multistream_decoder_destroy(sec_decoder); sec_decoder = NULL;
         return -1;
     }
@@ -1813,6 +1845,8 @@ static void coop_secondary_aud_cleanup(void) {
     coop_audio_fifo_destroy(&sec_fifo);
     if (sec_lock) SDL_DestroyMutex(sec_lock);
     sec_lock = NULL;
+    if (sec_cond) SDL_DestroyCond(sec_cond);
+    sec_cond = NULL;
     if (sec_fd >= 0) {
         coop_msg_channel_detach(&sec_channel);
         close(sec_fd);
@@ -1849,6 +1883,7 @@ static void coop_secondary_aud_feed(char *sampleData, int sampleLength) {
     bool accepted = coop_audio_fifo_push(&sec_fifo, pcm, (unsigned)decoded, first_frame,
                                          ready_us, sampleData == NULL ? 1u : 0u);
     if (sec_fifo.count > sec_win_fifo_max) sec_win_fifo_max = sec_fifo.count;
+    SDL_CondSignal(sec_cond);
     SDL_UnlockMutex(sec_lock);
     if (!accepted) {
         sec_rejected_frames += (unsigned)decoded;
