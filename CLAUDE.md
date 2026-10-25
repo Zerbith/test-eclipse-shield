@@ -96,6 +96,13 @@ be run against the real hosts/Shield, so everything user-visible is "untested" u
 - Commit `238b7cf` "Updater: clear focus highlight for the buttons and token field" is built and published
   (build 56, `eclipse-android-56.apk`, 2026-10-24); not yet confirmed on the Shield.
 - CI warns that `actions/setup-java@v4` and the Node 20 actions are deprecated; still works, upgrade some time.
+- First real co-op game test (2026-10-25, Borderlands 2): (1) short picture freezes every few seconds on the
+  PRIMARY (NVIDIA) pane; (2) secondary (AMD) audio crackles; (3) dialogue heard twice, out of sync (two game
+  instances; settings: Co-op > Audio mode / "Play shared sounds once" / Advanced "Second PC's sound buffer");
+  (4) only 59 FPS selectable (SDL truncated the Shield's 59.94 Hz; fixed in basic.pane.c). For (1) the
+  MediaCodec output thread now renders only the newest picture of a burst (`skippedStale` in the
+  `EclipseMediaCodec` stats[N] log line every 300 frames, next to `droppedBusy`). Cause of (1) NOT confirmed;
+  needs a log with tag `EclipseMediaCodec`.
 - Not yet reported/verified: 60 FPS smoothness at 4K, audio quality, seam visibility, "monitors off" on the
   AMD host after the env fix, End-stream semantics ("only that PC" was asked once; currently quits both).
 

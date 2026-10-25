@@ -108,6 +108,15 @@ static lv_obj_t *create_obj(lv_fragment_t *self, lv_obj_t *container) {
             display_hz = mode.refresh_rate;
         }
     }
+    /* SDL truncates fractional (NTSC) rates: a TV at 59.94 Hz reads as 59, which hid the 60 FPS
+     * entry on the Shield. Round those back up to the nominal rate. */
+    switch (display_hz) {
+        case 23: case 29: case 59: case 119: case 143: case 239:
+            display_hz++;
+            break;
+        default:
+            break;
+    }
 #endif
     if (max_width == 0 || max_height == 0) {
         max_width = native_width;

@@ -85,7 +85,7 @@ struct SS4S_VideoInstance {
 
     /* Diagnostics, written by the feed thread only (output counters by the output thread). */
     uint64_t fed, droppedBusy, droppedOversize, largestFrame;
-    atomic_uint_fast64_t rendered;
+    atomic_uint_fast64_t rendered, skippedStale;
     size_t inputCapacitySeen;
 };
 
@@ -161,9 +161,26 @@ static void *OutputThread(void *arg) {
     while (atomic_load(&inst->running)) {
         ssize_t index = AMediaCodec_dequeueOutputBuffer(inst->codec, &info, OUTPUT_POLL_TIMEOUT_US);
         if (index >= 0) {
-            /* render=true shows the frame immediately: lowest latency, no pacing. */
+            /* SHOW ONLY THE NEWEST. When pictures arrive in a burst (network jitter, or a 60 fps
+             * stream on a 59.94 Hz TV) rendering each one queues them on the Surface; once it is
+             * full the decoder cannot hand out output, stops taking input, and the feed drops a
+             * frame -- a visible freeze until the next keyframe. Skipping the older ones of a
+             * burst keeps the decoder moving. render=true: lowest latency, no pacing. */
+            ssize_t next;
+            while ((next = AMediaCodec_dequeueOutputBuffer(inst->codec, &info, 0)) >= 0) {
+                AMediaCodec_releaseOutputBuffer(inst->codec, (size_t) index, false);
+                atomic_fetch_add(&inst->skippedStale, 1);
+                index = next;
+            }
             AMediaCodec_releaseOutputBuffer(inst->codec, (size_t) index, true);
             atomic_fetch_add(&inst->rendered, 1);
+            if (next == AMEDIACODEC_INFO_OUTPUT_FORMAT_CHANGED) {
+                AMediaFormat *format = AMediaCodec_getOutputFormat(inst->codec);
+                if (format != NULL) {
+                    Log(SS4S_LogLevelInfo, "Output format changed: %s", AMediaFormat_toString(format));
+                    AMediaFormat_delete(format);
+                }
+            }
         } else if (index == AMEDIACODEC_INFO_OUTPUT_FORMAT_CHANGED) {
             AMediaFormat *format = AMediaCodec_getOutputFormat(inst->codec);
             if (format != NULL) {
@@ -404,8 +421,10 @@ static SS4S_VideoFeedResult Feed(SS4S_VideoInstance *inst, const unsigned char *
     inst->fed++;
     if (inst->fed % 300 == 0) {
         Log(SS4S_LogLevelInfo,
-            "stats[%d]: fed=%llu rendered=%llu droppedBusy=%llu droppedOversize=%llu largestAU=%llu inputBuf=%zu",
+            "stats[%d]: fed=%llu rendered=%llu skippedStale=%llu droppedBusy=%llu droppedOversize=%llu "
+            "largestAU=%llu inputBuf=%zu",
             inst->index, (unsigned long long) inst->fed, (unsigned long long) atomic_load(&inst->rendered),
+            (unsigned long long) atomic_load(&inst->skippedStale),
             (unsigned long long) inst->droppedBusy, (unsigned long long) inst->droppedOversize,
             (unsigned long long) inst->largestFrame, inst->inputCapacitySeen);
     }
