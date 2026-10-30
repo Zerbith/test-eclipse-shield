@@ -107,10 +107,15 @@ be run against the real hosts/Shield, so everything user-visible is "untested" u
   Android's 40 ms background timer slack, so `SDL_Delay(1)` in the secondary's stop-and-wait sender slept ~41 ms
   -> only ~24k of 48k frames/s reached the mixer (crackle, `rejected_window`, FIFO full = 1-3 s delay).
   Sender now waits on poll()/cond + PR_SET_TIMERSLACK. Also every stream end crashed in SDL 2.30's AAudio driver
-  (SDL_PumpEvents -> AudioStreamTrack::getTimestamp); app.c now asks SDL for OpenSL ES first. Both UNTESTED.
+  (SDL_PumpEvents -> AudioStreamTrack::getTimestamp); app.c now asks SDL for OpenSL ES first.
+- Build 59 test (reported 2026-10-30): user says "alles perfekt". One open incident: a standby-like screen once
+  while both were in-game (user suspects Big Picture, unverified), then sound delayed a few seconds until the GAME
+  was restarted. No log exists (the recording had died). The stream kept running across the game restart, so
+  Eclipse's buffers were not reset, which points to the host/game side; not proven. Get a log if it recurs.
 - Capturing logs myself: `D:\adb\adb.exe -s 192.168.0.100:5555` (Shield over network). The Shield's logcat
   buffer was 256 KB (too small, the user's log came out empty); set to 16 MB with `logcat -b all -G 16M`
-  (may reset on reboot). Look for `[COOP-AUD.secondary]` / `[COOP-AUD.pull]` lines every 5 s.
+  (may reset on reboot). Look for `[COOP-AUD.secondary]` / `[COOP-AUD.pull]` lines every 5 s. A long background
+  `adb logcat` recording dies if the connection drops (exit 255): start it right before a test and check it.
 - Not yet reported/verified: 60 FPS smoothness at 4K, audio quality, seam visibility, "monitors off" on the
   AMD host after the env fix, End-stream semantics ("only that PC" was asked once; currently quits both).
 
