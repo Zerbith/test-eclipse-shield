@@ -77,7 +77,7 @@ be run against the real hosts/Shield, so everything user-visible is "untested" u
 - **Controller virtual mouse per pad**: each controller's mouse goes to the host that controller is assigned to
   (`session_virt_mouse.c`, new coop messages `MOUSE_MOVE`/`MOUSE_SCROLL_HR`). Toggle LB + right-stick click
   (needs Settings > Input > Virtual mouse ON) or the radial menu.
-- **Radial menu**: hold **Start 3 s** (`RADIAL_HOLD_MS` in `session_gamepad.c`); left stick picks Mouse (up) /
+- **Radial menu**: hold **Start 1.5 s** (`RADIAL_HOLD_MS` in `session_gamepad.c`); left stick picks Mouse (up) /
   Keyboard (right) / End stream (down, quits on both PCs) / Steam Big Picture open-close (left); release
   Start confirms, stick centred = cancel (the old "Cancel" entry was replaced on 2026-10-24).
 - **Big Picture toggle** (`stream/input/host_actions.c`): Win+R, `steam://open|close/bigpicture` as UTF-8 text,
