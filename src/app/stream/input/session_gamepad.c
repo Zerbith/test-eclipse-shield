@@ -26,7 +26,7 @@ static bool vmouse_combo_pressed = false;
  * Holding Start for RADIAL_HOLD_MS opens the radial menu (ui/streaming/radial_menu.h). While it is
  * open the pad that opened it is swallowed here: the left stick picks an entry and releasing
  * Start confirms. A short tap of Start is untouched and reaches the host as always. */
-#define RADIAL_HOLD_MS 1500
+#define RADIAL_HOLD_MS 2000
 #define RADIAL_STICK_THRESHOLD 16000
 static SDL_TimerID start_hold_timer = 0;
 static int start_hold_pad = -1;
